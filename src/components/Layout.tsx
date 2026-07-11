@@ -24,7 +24,7 @@ export default function Layout({
       <div className="absolute top-1/3 right-1/4 w-[500px] h-[500px] bg-purple-500/5 rounded-full blur-[150px] pointer-events-none" />
 
       {/* Glassmorphism Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-[#07070a]/75 border-b border-gray-800/60">
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-[#07070a]/75 border-b border-gray-800/60 print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Logo */}
           <div 
@@ -154,7 +154,7 @@ export default function Layout({
       </main>
 
       {/* Footer */}
-      <footer className="bg-[#050507] border-t border-gray-900 py-12 px-4 sm:px-6 lg:px-8 mt-auto">
+      <footer className="bg-[#050507] border-t border-gray-900 py-12 px-4 sm:px-6 lg:px-8 mt-auto print:hidden">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between space-y-6 md:space-y-0 text-gray-500 text-xs">
           <div className="flex items-center space-x-2.5">
             <Shield className="w-4 h-4 text-gray-400" />

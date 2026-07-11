@@ -6,6 +6,7 @@ import {
   Info, ExternalLink, Layers, AlertCircle
 } from "lucide-react";
 import { validateInvestigationInput } from "../utils/validation";
+import InvestigationReport from "./InvestigationReport";
 
 interface EntityNode {
   id: string;
@@ -62,6 +63,7 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
   
   // Tab-specific State
   const [activeTab, setActiveTab] = useState<string>("overview");
+  const [viewMode, setViewMode] = useState<"report" | "explorer">("report");
 
   // Load selected history result on restore
   React.useEffect(() => {
@@ -71,6 +73,7 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
       try {
         setResponse(JSON.parse(initialResult.resultJson));
         setActiveTab("overview");
+        setViewMode("report");
         setError(null);
         setValidationMsg(null);
       } catch (err) {
@@ -138,6 +141,7 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
     setIsInvestigating(true);
     setResponse(null);
     setActiveTab("overview"); // reset to overview tab on new run
+    setViewMode("report");
 
     // Loading ticker simulation for active sensors
     const orchestrationTicks = [
@@ -205,7 +209,7 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full flex-grow flex flex-col justify-start animate-fade-in" id="playground-workspace">
       
       {/* Dynamic Navigation/Breadcrumbs & Page Title */}
-      <div className="border-b border-neutral-800/80 pb-6 mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="border-b border-neutral-800/80 pb-6 mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 print:hidden">
         <div>
           <div className="inline-flex items-center space-x-1.5 bg-neutral-900 border border-neutral-800 px-2.5 py-0.5 rounded text-[10px] text-neutral-400 font-mono uppercase tracking-wider mb-2 font-medium">
             Sentinel Sandbox Console
@@ -225,10 +229,10 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
       </div>
 
       {/* Workspace Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start print:block print:w-full">
         
         {/* Left Side: Investigate Panel */}
-        <div className="lg:col-span-4 space-y-6">
+        <div className="lg:col-span-4 space-y-6 print:hidden">
           <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 sm:p-6 space-y-5 shadow-xl shadow-black/25 backdrop-blur-sm" id="investigate-panel">
             <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
               <h3 className="text-xs font-bold text-neutral-300 uppercase tracking-wider font-mono flex items-center space-x-2">
@@ -361,7 +365,7 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
         </div>
 
         {/* Right Side: Results & Tabs Presentation */}
-        <div className="lg:col-span-8 space-y-6">
+        <div className="lg:col-span-8 space-y-6 print:w-full print:max-w-none print:p-0">
           
           {/* Active Loading Skeletons */}
           {isInvestigating && (
@@ -450,326 +454,371 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
                 </button>
               </div>
             </div>
-          )}
-
-          {/* Successful Response Tabs presentation panel */}
+          )}          {/* Successful Response Tabs presentation panel */}
           {!isInvestigating && response && (
-            <div className="space-y-6 animate-fade-in" id="playground-results-container">
+            <div className="space-y-6 animate-fade-in print:space-y-0" id="playground-results-container">
               
-              {/* Responsive Tabs bar - Vercel / Linear inspired minimal look */}
-              <div className="border-b border-neutral-800 pb-px flex items-center overflow-x-auto no-scrollbar scroll-smooth">
-                <div className="flex space-x-1 sm:space-x-2">
-                  {[
-                    { id: "overview", label: "Overview", icon: FileText },
-                    { id: "entities", label: "Entities", icon: Cpu },
-                    { id: "relationships", label: "Relationships", icon: Network },
-                    { id: "timeline", label: "Timeline", icon: Calendar },
-                    { id: "sources", label: "Sources", icon: Globe },
-                    { id: "raw", label: "Raw JSON", icon: Database }
-                  ].map((tab) => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center space-x-1.5 px-3 py-2.5 border-b-2 text-xs font-mono transition-all cursor-pointer whitespace-nowrap outline-none ${
-                          isActive
-                            ? "border-white text-white font-semibold bg-neutral-900/25"
-                            : "border-transparent text-neutral-400 hover:text-neutral-200"
-                        }`}
-                        id={`tab-trigger-${tab.id}`}
-                      >
-                        <Icon className="w-3.5 h-3.5 shrink-0" />
-                        <span>{tab.label}</span>
-                      </button>
-                    );
-                  })}
+              {/* Toggle Switch between Executive Report & Interactive Explorer - Hidden in print */}
+              <div className="bg-neutral-900/40 border border-neutral-800 p-1.5 rounded-lg flex items-center justify-between gap-4 print:hidden">
+                <div className="flex items-center space-x-2 px-2.5">
+                  <Shield className="w-3.5 h-3.5 text-neutral-400" />
+                  <span className="text-[10px] font-mono text-neutral-300 font-semibold uppercase tracking-wider">Analysis Formats</span>
+                </div>
+                
+                <div className="flex bg-neutral-950 p-1 rounded-md border border-neutral-800/80">
+                  <button
+                    onClick={() => setViewMode("report")}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-mono font-medium transition-all duration-150 flex items-center space-x-1.5 cursor-pointer select-none ${
+                      viewMode === "report"
+                        ? "bg-white text-black font-semibold shadow"
+                        : "text-neutral-400 hover:text-white"
+                    }`}
+                    id="btn-format-report"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Executive report</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode("explorer")}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-mono font-medium transition-all duration-150 flex items-center space-x-1.5 cursor-pointer select-none ${
+                      viewMode === "explorer"
+                        ? "bg-white text-black font-semibold shadow"
+                        : "text-neutral-400 hover:text-white"
+                    }`}
+                    id="btn-format-explorer"
+                  >
+                    <Network className="w-3.5 h-3.5" />
+                    <span>Interactive Explorer</span>
+                  </button>
                 </div>
               </div>
 
-              {/* TABS PANELS IMPLEMENTATIONS */}
-
-              {/* 1. OVERVIEW TAB PANEL */}
-              {activeTab === "overview" && (
-                <div className="space-y-6 animate-fade-in" id="panel-overview">
+              {viewMode === "report" ? (
+                <InvestigationReport 
+                  response={response} 
+                  targetType={type} 
+                  targetQuery={value} 
+                />
+              ) : (
+                <div className="space-y-6 animate-fade-in">
                   
-                  {/* Status & Confidence Score bar */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-stretch">
-                    
-                    {/* Status Badge */}
-                    <div className="sm:col-span-8 bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 flex flex-col justify-between">
-                      <div>
-                        <span className="text-[8px] font-mono font-bold text-neutral-500 uppercase tracking-widest block mb-1">
-                          Synthesized Posture summary
-                        </span>
-                        <p className="text-neutral-200 text-xs font-mono italic leading-relaxed">
-                          "{response.summary || "No automated summary posture calculated."}"
-                        </p>
+                  {/* Responsive Tabs bar - Vercel / Linear inspired minimal look */}
+                  <div className="border-b border-neutral-800 pb-px flex items-center overflow-x-auto no-scrollbar scroll-smooth">
+                    <div className="flex space-x-1 sm:space-x-2">
+                      {[
+                        { id: "overview", label: "Overview", icon: FileText },
+                        { id: "entities", label: "Entities", icon: Cpu },
+                        { id: "relationships", label: "Relationships", icon: Network },
+                        { id: "timeline", label: "Timeline", icon: Calendar },
+                        { id: "sources", label: "Sources", icon: Globe },
+                        { id: "raw", label: "Raw JSON", icon: Database }
+                      ].map((tab) => {
+                        const Icon = tab.icon;
+                        const isActive = activeTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center space-x-1.5 px-3 py-2.5 border-b-2 text-xs font-mono transition-all cursor-pointer whitespace-nowrap outline-none ${
+                              isActive
+                                ? "border-white text-white font-semibold bg-neutral-900/25"
+                                : "border-transparent text-neutral-400 hover:text-neutral-200"
+                            }`}
+                            id={`tab-trigger-${tab.id}`}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span>{tab.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* TABS PANELS IMPLEMENTATIONS */}
+
+                  {/* 1. OVERVIEW TAB PANEL */}
+                  {activeTab === "overview" && (
+                    <div className="space-y-6 animate-fade-in" id="panel-overview">
+                      
+                      {/* Status & Confidence Score bar */}
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-stretch">
+                        
+                        {/* Status Badge */}
+                        <div className="sm:col-span-8 bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 flex flex-col justify-between">
+                          <div>
+                            <span className="text-[8px] font-mono font-bold text-neutral-500 uppercase tracking-widest block mb-1">
+                              Synthesized Posture summary
+                            </span>
+                            <p className="text-neutral-200 text-xs font-mono italic leading-relaxed">
+                              "{response.summary || "No automated summary posture calculated."}"
+                            </p>
+                          </div>
+                          <div className="text-[10px] text-neutral-400 font-light mt-4 flex items-center space-x-1.5">
+                            <span className="w-1.5 h-1.5 bg-neutral-400 rounded-full shrink-0" />
+                            <span>Analysis produced using real-time sensor parameters</span>
+                          </div>
+                        </div>
+
+                        {/* Confidence Score Bar */}
+                        <div className="sm:col-span-4 bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 flex flex-col justify-between" id="section-confidence">
+                          <div>
+                            <span className="text-[8px] font-mono font-bold text-neutral-500 uppercase tracking-widest block mb-1">
+                              Confidence Score
+                            </span>
+                            <div className="flex items-baseline space-x-1">
+                              <span className="text-3xl font-mono font-bold text-white tracking-tight">
+                                {response.confidence}%
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Metric visual gauge */}
+                          <div className="mt-4 space-y-1.5">
+                            <div className="w-full bg-neutral-950 h-1.5 rounded-full overflow-hidden border border-neutral-850">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-700 ${
+                                  response.confidence >= 80 ? "bg-white" :
+                                  response.confidence >= 50 ? "bg-neutral-400" : "bg-neutral-600"
+                                }`}
+                                style={{ width: `${response.confidence}%` }}
+                              />
+                            </div>
+                            <span className="text-[8px] font-mono text-neutral-500 uppercase block tracking-wider text-right">
+                              INTEGRITY LEVEL: {response.confidence >= 80 ? "HIGH" : response.confidence >= 50 ? "MODERATE" : "LOW"}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-neutral-400 font-light mt-4 flex items-center space-x-1.5">
-                        <span className="w-1.5 h-1.5 bg-neutral-400 rounded-full shrink-0" />
-                        <span>Analysis produced using real-time sensor parameters</span>
+
+                      {/* Executive Summary Section */}
+                      <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-3.5" id="section-executive-summary">
+                        <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800 pb-2.5">
+                          <FileText className="w-3.5 h-3.5 text-neutral-400" />
+                          <span>Executive Summary Analysis</span>
+                        </h4>
+                        <div className="text-xs text-neutral-300 font-light leading-relaxed font-sans bg-neutral-950/40 p-4 rounded border border-neutral-850/60 select-text whitespace-pre-line">
+                          {response.executiveSummary || "No executive summary available."}
+                        </div>
+                      </div>
+
+                      {/* Actionable Recommendations */}
+                      <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4" id="section-recommendations">
+                        <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800 pb-2.5">
+                          <CheckSquare className="w-3.5 h-3.5 text-neutral-400" />
+                          <span>Security & Action Recommendations</span>
+                        </h4>
+
+                        {response.recommendations && response.recommendations.length > 0 ? (
+                          <div className="grid grid-cols-1 gap-2.5">
+                            {response.recommendations.map((rec, idx) => (
+                              <div key={idx} className="bg-neutral-950/40 border border-neutral-800/80 p-3 rounded flex items-start space-x-3 hover:border-neutral-700 transition-colors">
+                                <span className="w-5 h-5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono text-[9px] flex items-center justify-center shrink-0 font-bold mt-0.5">
+                                  {idx + 1}
+                                </span>
+                                <span className="text-xs text-neutral-300 leading-relaxed font-light">{rec}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-neutral-500 font-mono py-2 italic text-center">No structural recommendations identified.</p>
+                        )}
                       </div>
                     </div>
+                  )}
 
-                    {/* Confidence Score Bar */}
-                    <div className="sm:col-span-4 bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 flex flex-col justify-between" id="section-confidence">
-                      <div>
-                        <span className="text-[8px] font-mono font-bold text-neutral-500 uppercase tracking-widest block mb-1">
-                          Confidence Score
+                  {/* 2. ENTITIES TAB PANEL */}
+                  {activeTab === "entities" && (
+                    <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4 animate-fade-in" id="panel-entities">
+                      <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
+                        <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2">
+                          <Cpu className="w-3.5 h-3.5 text-neutral-400" />
+                          <span>Resolved Asset Entities</span>
+                        </h4>
+                        <span className="text-[10px] font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-850">
+                          NODES COUNT: {response.entities?.length || 0}
                         </span>
-                        <div className="flex items-baseline space-x-1">
-                          <span className="text-3xl font-mono font-bold text-white tracking-tight">
-                            {response.confidence}%
-                          </span>
+                      </div>
+
+                      {response.entities && response.entities.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-[500px] overflow-y-auto pr-1">
+                          {response.entities.map((entity, idx) => (
+                            <div key={idx} className="bg-neutral-950/65 border border-neutral-855 rounded p-3.5 flex flex-col justify-between hover:border-neutral-700 transition-all group relative overflow-hidden">
+                              <div className="absolute top-0 left-0 w-1 h-full bg-neutral-550" />
+                              <div className="flex items-start justify-between">
+                                <span className="text-xs font-bold text-white truncate pr-2" title={entity.name}>
+                                  {entity.name}
+                                </span>
+                                <span className="text-[8px] font-mono uppercase px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 text-neutral-400 rounded shrink-0">
+                                  {entity.type}
+                                </span>
+                              </div>
+                              {entity.details && (
+                                <p className="text-[11px] text-neutral-400 mt-2.5 leading-relaxed font-light">
+                                  {entity.details}
+                                </p>
+                              )}
+                              <div className="mt-3.5 pt-2 border-t border-neutral-900 flex items-center justify-between text-[8px] font-mono text-neutral-500">
+                                <span>RESOLVER INDEX: #{idx + 1}</span>
+                                <span>CONFIDENCE: {entity.confidence || 100}%</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
+                      ) : (
+                        <p className="text-xs text-neutral-500 font-mono py-8 italic text-center">No discrete infrastructure entities resolved.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 3. RELATIONSHIPS TAB PANEL */}
+                  {activeTab === "relationships" && (
+                    <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4 animate-fade-in" id="panel-relationships">
+                      <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
+                        <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2">
+                          <Network className="w-3.5 h-3.5 text-neutral-400" />
+                          <span>Asset Relationship Linkages</span>
+                        </h4>
+                        <span className="text-[10px] font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-850">
+                          LINKS COUNT: {response.relationships?.length || 0}
+                        </span>
+                      </div>
+
+                      {response.relationships && response.relationships.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1">
+                          {response.relationships.map((relation, idx) => (
+                            <div key={idx} className="bg-neutral-950/65 border border-neutral-855 p-4 flex flex-col justify-between hover:border-neutral-700 transition-all">
+                              <div className="flex items-center justify-between text-[11px] font-mono">
+                                <span className="text-neutral-300 truncate max-w-[120px] font-medium" title={relation.from}>
+                                  {relation.from}
+                                </span>
+                                <div className="flex flex-col items-center shrink-0 px-3">
+                                  <span className="text-[7px] text-neutral-400 uppercase tracking-widest bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
+                                    {relation.type}
+                                  </span>
+                                  <ArrowRight className="w-3 h-3 text-neutral-600 mt-1" />
+                                </div>
+                                <span className="text-neutral-300 truncate max-w-[120px] font-medium" title={relation.to}>
+                                  {relation.to}
+                                </span>
+                              </div>
+                              {relation.description && (
+                                <p className="text-[10px] text-neutral-400 font-light leading-relaxed border-t border-neutral-900 pt-2.5 mt-2.5">
+                                  {relation.description}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-neutral-500 font-mono py-8 italic text-center">No linkages resolved between registered assets.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 4. TIMELINE TAB PANEL */}
+                  {activeTab === "timeline" && (
+                    <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4 animate-fade-in" id="panel-timeline">
+                      <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800 pb-2.5">
+                        <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>Chronological Event Registry</span>
+                      </h4>
+                      
+                      {response.timeline && response.timeline.length > 0 ? (
+                        <div className="relative border-l border-neutral-800 pl-4 ml-2.5 py-2 space-y-6">
+                          {response.timeline.map((event, idx) => (
+                            <div key={idx} className="relative">
+                              {/* Dot marker */}
+                              <span className="absolute -left-[20.5px] top-1 w-2 h-2 rounded-full bg-white border border-neutral-950 shadow-sm" />
+                              
+                              <div className="space-y-1">
+                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1">
+                                  <span className="font-mono text-[9px] text-neutral-300 font-semibold bg-neutral-950 px-2 py-0.5 rounded border border-neutral-850">
+                                    {event.date}
+                                  </span>
+                                  <span className="text-[8px] font-mono uppercase tracking-wider text-neutral-500 bg-neutral-950 px-1.5 py-0.5 rounded">
+                                    SENSOR Ingress: {event.source}
+                                  </span>
+                                </div>
+                                <h5 className="text-xs font-semibold text-neutral-100 mt-1">{event.event}</h5>
+                                <p className="text-xs text-neutral-400 font-sans font-light leading-relaxed">
+                                  {event.description}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-neutral-500 font-mono py-8 italic text-center">No chronological target exposures mapped.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 5. SOURCES TAB PANEL */}
+                  {activeTab === "sources" && (
+                    <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4 animate-fade-in" id="panel-sources">
+                      <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800 pb-2.5">
+                        <Globe className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>Verified Source Citations</span>
+                      </h4>
+                      
+                      {response.sources && response.sources.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {response.sources.map((source, idx) => (
+                            <div key={idx} className="bg-neutral-950/60 border border-neutral-850 rounded p-3 flex items-center space-x-3 hover:border-neutral-700 transition-colors">
+                              <div className="w-8 h-8 rounded bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-500 shrink-0">
+                                <Globe className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="truncate min-w-0 flex-grow">
+                                <span className="text-[7px] font-mono uppercase tracking-wider text-neutral-500 block">SOURCE CHANNEL</span>
+                                <span className="text-xs text-neutral-300 font-mono truncate block mt-0.5" title={source}>
+                                  {source}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-neutral-500 font-mono py-8 italic text-center">No external citations found or registered.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 6. RAW JSON TAB PANEL */}
+                  {activeTab === "raw" && (
+                    <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg overflow-hidden shadow-2xl animate-fade-in" id="panel-raw-json">
+                      <div className="bg-neutral-950 border-b border-neutral-800 px-5 py-3 flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold text-neutral-300 uppercase tracking-wider flex items-center space-x-2">
+                          <Database className="w-3.5 h-3.5 text-neutral-400" />
+                          <span>Response Payload</span>
+                        </span>
+                        <button
+                          onClick={handleCopyOutput}
+                          className="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white rounded border border-neutral-800 text-[10px] font-mono flex items-center space-x-1.5 transition-colors cursor-pointer select-none"
+                          title="Copy API output"
+                          id="playground-copy-payload-btn"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span className="text-emerald-400 font-medium">Copied Response!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Copy Response</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                       
-                      {/* Metric visual gauge */}
-                      <div className="mt-4 space-y-1.5">
-                        <div className="w-full bg-neutral-950 h-1.5 rounded-full overflow-hidden border border-neutral-850">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-700 ${
-                              response.confidence >= 80 ? "bg-white" :
-                              response.confidence >= 50 ? "bg-neutral-400" : "bg-neutral-600"
-                            }`}
-                            style={{ width: `${response.confidence}%` }}
-                          />
-                        </div>
-                        <span className="text-[8px] font-mono text-neutral-500 uppercase block tracking-wider text-right">
-                          INTEGRITY LEVEL: {response.confidence >= 80 ? "HIGH" : response.confidence >= 50 ? "MODERATE" : "LOW"}
-                        </span>
+                      <div className="p-4 bg-black/75 max-h-[500px] overflow-y-auto font-mono text-[11px] leading-relaxed select-all">
+                        <pre className="text-neutral-300 whitespace-pre-wrap font-mono">
+                          {JSON.stringify(response, null, 2)}
+                        </pre>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Executive Summary Section */}
-                  <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-3.5" id="section-executive-summary">
-                    <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800 pb-2.5">
-                      <FileText className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>Executive Summary Analysis</span>
-                    </h4>
-                    <div className="text-xs text-neutral-300 font-light leading-relaxed font-sans bg-neutral-950/40 p-4 rounded border border-neutral-850/60 select-text whitespace-pre-line">
-                      {response.executiveSummary || "No executive summary available."}
-                    </div>
-                  </div>
-
-                  {/* Actionable Recommendations */}
-                  <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4" id="section-recommendations">
-                    <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800 pb-2.5">
-                      <CheckSquare className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>Security & Action Recommendations</span>
-                    </h4>
-
-                    {response.recommendations && response.recommendations.length > 0 ? (
-                      <div className="grid grid-cols-1 gap-2.5">
-                        {response.recommendations.map((rec, idx) => (
-                          <div key={idx} className="bg-neutral-950/40 border border-neutral-800/80 p-3 rounded flex items-start space-x-3 hover:border-neutral-700 transition-colors">
-                            <span className="w-5 h-5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono text-[9px] flex items-center justify-center shrink-0 font-bold mt-0.5">
-                              {idx + 1}
-                            </span>
-                            <span className="text-xs text-neutral-300 leading-relaxed font-light">{rec}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-neutral-500 font-mono py-2 italic text-center">No structural recommendations identified.</p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* 2. ENTITIES TAB PANEL */}
-              {activeTab === "entities" && (
-                <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4 animate-fade-in" id="panel-entities">
-                  <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
-                    <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2">
-                      <Cpu className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>Resolved Asset Entities</span>
-                    </h4>
-                    <span className="text-[10px] font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-850">
-                      NODES COUNT: {response.entities?.length || 0}
-                    </span>
-                  </div>
-
-                  {response.entities && response.entities.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-[500px] overflow-y-auto pr-1">
-                      {response.entities.map((entity, idx) => (
-                        <div key={idx} className="bg-neutral-950/65 border border-neutral-850/80 rounded p-3.5 flex flex-col justify-between hover:border-neutral-700 transition-all group relative overflow-hidden">
-                          <div className="absolute top-0 left-0 w-1 h-full bg-neutral-550" />
-                          <div className="flex items-start justify-between">
-                            <span className="text-xs font-bold text-white truncate pr-2" title={entity.name}>
-                              {entity.name}
-                            </span>
-                            <span className="text-[8px] font-mono uppercase px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 text-neutral-400 rounded shrink-0">
-                              {entity.type}
-                            </span>
-                          </div>
-                          {entity.details && (
-                            <p className="text-[11px] text-neutral-400 mt-2.5 leading-relaxed font-light">
-                              {entity.details}
-                            </p>
-                          )}
-                          <div className="mt-3.5 pt-2 border-t border-neutral-900 flex items-center justify-between text-[8px] font-mono text-neutral-500">
-                            <span>RESOLVER INDEX: #{idx + 1}</span>
-                            <span>CONFIDENCE: {entity.confidence || 100}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-neutral-500 font-mono py-8 italic text-center">No discrete infrastructure entities resolved.</p>
                   )}
-                </div>
-              )}
 
-              {/* 3. RELATIONSHIPS TAB PANEL */}
-              {activeTab === "relationships" && (
-                <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4 animate-fade-in" id="panel-relationships">
-                  <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
-                    <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2">
-                      <Network className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>Asset Relationship Linkages</span>
-                    </h4>
-                    <span className="text-[10px] font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-850">
-                      LINKS COUNT: {response.relationships?.length || 0}
-                    </span>
-                  </div>
-
-                  {response.relationships && response.relationships.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1">
-                      {response.relationships.map((relation, idx) => (
-                        <div key={idx} className="bg-neutral-950/65 border border-neutral-850/80 rounded p-4 flex flex-col justify-between hover:border-neutral-700 transition-all">
-                          <div className="flex items-center justify-between text-[11px] font-mono">
-                            <span className="text-neutral-300 truncate max-w-[120px] font-medium" title={relation.from}>
-                              {relation.from}
-                            </span>
-                            <div className="flex flex-col items-center shrink-0 px-3">
-                              <span className="text-[7px] text-neutral-400 uppercase tracking-widest bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
-                                {relation.type}
-                              </span>
-                              <ArrowRight className="w-3 h-3 text-neutral-600 mt-1" />
-                            </div>
-                            <span className="text-neutral-300 truncate max-w-[120px] font-medium" title={relation.to}>
-                              {relation.to}
-                            </span>
-                          </div>
-                          {relation.description && (
-                            <p className="text-[10px] text-neutral-400 font-light leading-relaxed border-t border-neutral-900 pt-2.5 mt-2.5">
-                              {relation.description}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-neutral-500 font-mono py-8 italic text-center">No linkages resolved between registered assets.</p>
-                  )}
-                </div>
-              )}
-
-              {/* 4. TIMELINE TAB PANEL */}
-              {activeTab === "timeline" && (
-                <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4 animate-fade-in" id="panel-timeline">
-                  <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800 pb-2.5">
-                    <Calendar className="w-3.5 h-3.5 text-neutral-400" />
-                    <span>Chronological Event Registry</span>
-                  </h4>
-                  
-                  {response.timeline && response.timeline.length > 0 ? (
-                    <div className="relative border-l border-neutral-800 pl-4 ml-2.5 py-2 space-y-6">
-                      {response.timeline.map((event, idx) => (
-                        <div key={idx} className="relative">
-                          {/* Dot marker */}
-                          <span className="absolute -left-[20.5px] top-1 w-2 h-2 rounded-full bg-white border border-neutral-950 shadow-sm" />
-                          
-                          <div className="space-y-1">
-                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1">
-                              <span className="font-mono text-[9px] text-neutral-300 font-semibold bg-neutral-950 px-2 py-0.5 rounded border border-neutral-850">
-                                {event.date}
-                              </span>
-                              <span className="text-[8px] font-mono uppercase tracking-wider text-neutral-500 bg-neutral-950 px-1.5 py-0.5 rounded">
-                                SENSOR Ingress: {event.source}
-                              </span>
-                            </div>
-                            <h5 className="text-xs font-semibold text-neutral-100 mt-1">{event.event}</h5>
-                            <p className="text-xs text-neutral-400 font-sans font-light leading-relaxed">
-                              {event.description}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-neutral-500 font-mono py-8 italic text-center">No chronological target exposures mapped.</p>
-                  )}
-                </div>
-              )}
-
-              {/* 5. SOURCES TAB PANEL */}
-              {activeTab === "sources" && (
-                <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4 animate-fade-in" id="panel-sources">
-                  <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800 pb-2.5">
-                    <Globe className="w-3.5 h-3.5 text-neutral-400" />
-                    <span>Verified Source Citations</span>
-                  </h4>
-                  
-                  {response.sources && response.sources.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {response.sources.map((source, idx) => (
-                        <div key={idx} className="bg-neutral-950/60 border border-neutral-850 rounded p-3 flex items-center space-x-3 hover:border-neutral-700 transition-colors">
-                          <div className="w-8 h-8 rounded bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-500 shrink-0">
-                            <Globe className="w-3.5 h-3.5" />
-                          </div>
-                          <div className="truncate min-w-0 flex-grow">
-                            <span className="text-[7px] font-mono uppercase tracking-wider text-neutral-500 block">SOURCE CHANNEL</span>
-                            <span className="text-xs text-neutral-300 font-mono truncate block mt-0.5" title={source}>
-                              {source}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-neutral-500 font-mono py-8 italic text-center">No external citations found or registered.</p>
-                  )}
-                </div>
-              )}
-
-              {/* 6. RAW JSON TAB PANEL */}
-              {activeTab === "raw" && (
-                <div className="bg-neutral-900/40 border border-neutral-800 rounded-lg overflow-hidden shadow-2xl animate-fade-in" id="panel-raw-json">
-                  <div className="bg-neutral-950 border-b border-neutral-800 px-5 py-3 flex items-center justify-between">
-                    <span className="text-xs font-mono font-bold text-neutral-300 uppercase tracking-wider flex items-center space-x-2">
-                      <Database className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>Response Payload</span>
-                    </span>
-                    <button
-                      onClick={handleCopyOutput}
-                      className="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white rounded border border-neutral-800 text-[10px] font-mono flex items-center space-x-1.5 transition-colors cursor-pointer select-none"
-                      title="Copy API output"
-                      id="playground-copy-payload-btn"
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          <span className="text-emerald-400 font-medium">Copied Response!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3" />
-                          <span>Copy Response</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  
-                  <div className="p-4 bg-black/75 max-h-[500px] overflow-y-auto font-mono text-[11px] leading-relaxed select-all">
-                    <pre className="text-neutral-300 whitespace-pre-wrap font-mono">
-                      {JSON.stringify(response, null, 2)}
-                    </pre>
-                  </div>
                 </div>
               )}
 
