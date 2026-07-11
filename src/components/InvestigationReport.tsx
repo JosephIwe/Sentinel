@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { 
   Shield, FileText, AlertTriangle, CheckSquare, Globe, Calendar, Network, 
   Cpu, Copy, Check, Printer, ExternalLink, ShieldAlert, Info, ArrowRight,
-  Eye, EyeOff, Lock
+  Eye, EyeOff, Lock, GitBranch, GitCommit, GitFork, Star, Users, Code2, ShieldCheck
 } from "lucide-react";
 
 interface EntityNode {
@@ -676,12 +676,429 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             </div>
           </div>
 
+          {/* GitHub Intelligence Section */}
+          {(() => {
+            const githubEvs = response.evidences?.filter(ev => ev.connector === "GitHub Intelligence Resolver") || [];
+            const hasGithubIntel = githubEvs.length > 0;
+
+            const orgEv = response.evidences?.find(ev => ev.id === "ev_gh_org_intelligence");
+            const repoEv = response.evidences?.find(ev => ev.id === "ev_gh_repo_intelligence");
+            const securityEv = response.evidences?.find(ev => ev.id === "ev_gh_security_intelligence");
+            const activityEv = response.evidences?.find(ev => ev.id === "ev_gh_activity_intelligence");
+
+            const orgData = orgEv?.rawData;
+            const repoData = repoEv?.rawData;
+            const securityData = securityEv?.rawData;
+            const activityData = activityEv?.rawData;
+
+            if (!hasGithubIntel) return null;
+
+            return (
+              <div className="lg:col-span-12 space-y-6 print:break-inside-avoid">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-6 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-3 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <Code2 className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>7. GitHub Codebase & Profile Intelligence</span>
+                    </h3>
+                    <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded uppercase tracking-wider shrink-0">
+                      RESOLVED SOURCE FOOTPRINT
+                    </span>
+                  </div>
+
+                  {/* Score Meters Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Health Score */}
+                    {repoData && (
+                      <div className="bg-neutral-900/60 border border-neutral-800/80 p-4 rounded-lg flex flex-col justify-between print:bg-white print:border-neutral-300">
+                        <div className="flex items-center justify-between border-b border-neutral-850/80 pb-2 mb-3">
+                          <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider font-semibold">Repository Health</span>
+                          <span className="text-xs font-mono font-bold text-emerald-400">
+                            {(() => {
+                              let score = 30;
+                              if (repoData.license) score += 20;
+                              if (securityData?.securityMdExists) score += 20;
+                              const openIssues = repoData.open_issues_count || 0;
+                              const stars = repoData.stargazers_count || 1;
+                              if (openIssues / stars < 0.1) score += 20;
+                              else if (openIssues / stars < 0.3) score += 10;
+                              if (repoData.description) score += 10;
+                              return Math.min(100, score);
+                            })()}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 font-sans font-light leading-relaxed mb-3">
+                          Integrates profile density, license compliance, code documentation completeness, and issue ratio parameters.
+                        </p>
+                        <div className="w-full bg-neutral-950 h-1.5 rounded-full overflow-hidden border border-neutral-850">
+                          <div 
+                            className="h-full bg-emerald-500 rounded-full" 
+                            style={{
+                              width: `${(() => {
+                                let score = 30;
+                                if (repoData.license) score += 20;
+                                if (securityData?.securityMdExists) score += 20;
+                                const openIssues = repoData.open_issues_count || 0;
+                                const stars = repoData.stargazers_count || 1;
+                                if (openIssues / stars < 0.1) score += 20;
+                                else if (openIssues / stars < 0.3) score += 10;
+                                if (repoData.description) score += 10;
+                                return Math.min(100, score);
+                              })()}%`
+                            }} 
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Activity Score */}
+                    {repoData && (
+                      <div className="bg-neutral-900/60 border border-neutral-800/80 p-4 rounded-lg flex flex-col justify-between print:bg-white print:border-neutral-300">
+                        <div className="flex items-center justify-between border-b border-neutral-850/80 pb-2 mb-3">
+                          <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider font-semibold">Activity Score</span>
+                          <span className="text-xs font-mono font-bold text-blue-400">
+                            {activityData?.activityScore ?? 50}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 font-sans font-light leading-relaxed mb-3">
+                          Measures recent commit frequency, semantic releases timeline consistency, and core contributor densities.
+                        </p>
+                        <div className="w-full bg-neutral-950 h-1.5 rounded-full overflow-hidden border border-neutral-850">
+                          <div 
+                            className="h-full bg-blue-500 rounded-full" 
+                            style={{ width: `${activityData?.activityScore ?? 50}%` }} 
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Security Score */}
+                    {repoData && (
+                      <div className="bg-neutral-900/60 border border-neutral-800/80 p-4 rounded-lg flex flex-col justify-between print:bg-white print:border-neutral-300">
+                        <div className="flex items-center justify-between border-b border-neutral-850/80 pb-2 mb-3">
+                          <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider font-semibold">Security Score</span>
+                          <span className={`text-xs font-mono font-bold ${
+                            (securityData?.securityScore ?? 50) >= 70 ? "text-indigo-400" : "text-amber-400"
+                          }`}>
+                            {securityData?.securityScore ?? 50}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 font-sans font-light leading-relaxed mb-3">
+                          Determines code protection via active vulnerability screening, Dependabot alerts, and security guidelines.
+                        </p>
+                        <div className="w-full bg-neutral-950 h-1.5 rounded-full overflow-hidden border border-neutral-850">
+                          <div 
+                            className={`h-full rounded-full ${
+                              (securityData?.securityScore ?? 50) >= 70 ? "bg-indigo-500" : "bg-amber-500"
+                            }`} 
+                            style={{ width: `${securityData?.securityScore ?? 50}%` }} 
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Main Profile Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                    {/* Organization Info */}
+                    {orgData && (
+                      <div className="lg:col-span-4 bg-neutral-900/30 border border-neutral-800/80 p-4 rounded-lg space-y-3 print:bg-white print:border-neutral-300">
+                        <div className="border-b border-neutral-850 pb-2">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold">profile details</span>
+                          <span className="text-xs font-bold text-neutral-200 print:text-black">{orgData.name || orgData.login}</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">
+                          {orgData.bio || orgData.description || "No public biography provided by owner."}
+                        </p>
+                        <div className="grid grid-cols-2 gap-3 text-[10px] font-mono text-neutral-400 border-t border-neutral-850/60 pt-3">
+                          <div>
+                            <span className="text-neutral-500 uppercase block">Followers</span>
+                            <span className="text-neutral-200 print:text-black font-semibold">{orgData.followers?.toLocaleString() || 0}</span>
+                          </div>
+                          <div>
+                            <span className="text-neutral-500 uppercase block">Public Repos</span>
+                            <span className="text-neutral-200 print:text-black font-semibold">{orgData.public_repos || 0}</span>
+                          </div>
+                          <div>
+                            <span className="text-neutral-500 uppercase block">Created At</span>
+                            <span className="text-neutral-300 print:text-black">{orgData.created_at ? new Date(orgData.created_at).getFullYear() : "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-neutral-500 uppercase block">Type</span>
+                            <span className="text-neutral-300 print:text-black font-semibold">{orgData.type || "User"}</span>
+                          </div>
+                        </div>
+                        {orgData.blog && (
+                          <div className="pt-2 border-t border-neutral-850/60">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold">Verified Website</span>
+                            <a 
+                              href={orgData.blog.startsWith("http") ? orgData.blog : `https://${orgData.blog}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="text-[10px] font-mono text-blue-400 hover:underline flex items-center gap-1 mt-0.5 truncate"
+                            >
+                              <Globe className="w-3 h-3 shrink-0" />
+                              <span>{orgData.blog}</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Repository Core Metadata & Technology Stack */}
+                    {repoData && (
+                      <div className="lg:col-span-8 bg-neutral-900/30 border border-neutral-800/80 p-4 rounded-lg space-y-4 print:bg-white print:border-neutral-300">
+                        <div className="border-b border-neutral-850 pb-2">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold">codebase metadata</span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-neutral-200 print:text-black">{repoData.full_name}</span>
+                            <span className="text-[9px] font-mono text-neutral-400">branch: {repoData.default_branch}</span>
+                          </div>
+                        </div>
+
+                        {/* Tech Stack Breakdown */}
+                        <div className="space-y-2">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold">Technology Stack</span>
+                          {repoData.languages && Object.keys(repoData.languages).length > 0 ? (
+                            <div className="space-y-1.5">
+                              {/* Horizontal bar chart */}
+                              <div className="w-full h-2 rounded-full overflow-hidden flex bg-neutral-950">
+                                {(() => {
+                                  const langs = Object.entries(repoData.languages as Record<string, number>);
+                                  const totalBytes = langs.reduce((acc, [_, b]) => acc + b, 0);
+                                  const colors = ["bg-emerald-500", "bg-blue-500", "bg-yellow-500", "bg-indigo-500", "bg-amber-500", "bg-purple-500"];
+                                  return langs.slice(0, 6).map(([lang, bytes], i) => {
+                                    const pct = totalBytes > 0 ? (bytes / totalBytes) * 100 : 0;
+                                    return (
+                                      <div 
+                                        key={lang} 
+                                        className={`h-full ${colors[i % colors.length]}`} 
+                                        style={{ width: `${pct}%` }} 
+                                        title={`${lang}: ${pct.toFixed(1)}%`}
+                                      />
+                                    );
+                                  });
+                                })()}
+                              </div>
+                              {/* Labels */}
+                              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] font-mono text-neutral-400">
+                                {(() => {
+                                  const langs = Object.entries(repoData.languages as Record<string, number>);
+                                  const totalBytes = langs.reduce((acc, [_, b]) => acc + b, 0);
+                                  const colors = ["text-emerald-400", "text-blue-400", "text-yellow-400", "text-indigo-400", "text-amber-400", "text-purple-400"];
+                                  return langs.slice(0, 6).map(([lang, bytes], i) => {
+                                    const pct = totalBytes > 0 ? (bytes / totalBytes) * 100 : 0;
+                                    return (
+                                      <span key={lang} className="flex items-center gap-1">
+                                        <span className={`w-1.5 h-1.5 rounded-full ${colors[i % colors.length].replace("text", "bg")}`} />
+                                        <span>{lang} ({pct.toFixed(1)}%)</span>
+                                      </span>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-neutral-500 font-mono text-[10px] italic">No language distribution resolved. Primary language: {repoData.language || "Unknown"}</span>
+                          )}
+                        </div>
+
+                        {/* Stats row */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 border-t border-neutral-850/60">
+                          <div className="flex items-center gap-2">
+                            <Star className="w-4 h-4 text-neutral-500" />
+                            <div>
+                              <span className="text-[8px] font-mono text-neutral-500 uppercase block">Stars</span>
+                              <span className="text-[11px] font-mono text-neutral-200 print:text-black font-semibold">{repoData.stargazers_count?.toLocaleString() ?? 0}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <GitFork className="w-4 h-4 text-neutral-500" />
+                            <div>
+                              <span className="text-[8px] font-mono text-neutral-500 uppercase block">Forks</span>
+                              <span className="text-[11px] font-mono text-neutral-200 print:text-black font-semibold">{repoData.forks_count?.toLocaleString() ?? 0}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-neutral-500" />
+                            <div>
+                              <span className="text-[8px] font-mono text-neutral-500 uppercase block">Contributors</span>
+                              <span className="text-[11px] font-mono text-neutral-200 print:text-black font-semibold">{activityData?.contributorCount ?? "N/A"}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-neutral-500" />
+                            <div>
+                              <span className="text-[8px] font-mono text-neutral-500 uppercase block">Open Issues</span>
+                              <span className={`text-[11px] font-mono font-semibold ${
+                                (repoData.open_issues_count || 0) > 25 ? "text-amber-400" : "text-neutral-200"
+                              }`}>{repoData.open_issues_count ?? 0}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Topics/Tags */}
+                        {repoData.topics && repoData.topics.length > 0 && (
+                          <div className="space-y-1 pt-2 border-t border-neutral-850/60">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold">Repository Topics</span>
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
+                              {repoData.topics.slice(0, 10).map((topic: string) => (
+                                <span key={topic} className="text-[9px] font-mono text-neutral-300 bg-neutral-900 border border-neutral-850 px-2 py-0.5 rounded">
+                                  {topic}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Audits & Key Evidence Details */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Security Compliance Checklist */}
+                    <div className="bg-neutral-900/40 border border-neutral-800/80 p-4 rounded-lg space-y-3 print:bg-white print:border-neutral-300">
+                      <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold border-b border-neutral-850 pb-1.5">Security Policies & Integrations</span>
+                      <div className="space-y-2.5 pt-1">
+                        {/* SECURITY.md */}
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            {securityData?.securityMdExists ? (
+                              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                            ) : (
+                              <AlertTriangle className="w-4 h-4 text-neutral-500" />
+                            )}
+                            <span className="text-neutral-300 print:text-black">SECURITY.md Policy</span>
+                          </div>
+                          <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded font-bold uppercase border ${
+                            securityData?.securityMdExists 
+                              ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" 
+                              : "text-neutral-500 bg-neutral-500/5 border-neutral-850"
+                          }`}>
+                            {securityData?.securityMdExists ? "ACTIVE" : "MISSING"}
+                          </span>
+                        </div>
+
+                        {/* Dependabot */}
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            {securityData?.dependabotExists ? (
+                              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                            ) : (
+                              <AlertTriangle className="w-4 h-4 text-neutral-500" />
+                            )}
+                            <span className="text-neutral-300 print:text-black">Dependabot Alerts Engine</span>
+                          </div>
+                          <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded font-bold uppercase border ${
+                            securityData?.dependabotExists 
+                              ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" 
+                              : "text-neutral-500 bg-neutral-500/5 border-neutral-850"
+                          }`}>
+                            {securityData?.dependabotExists ? "CONFIGURED" : "MISSING"}
+                          </span>
+                        </div>
+
+                        {/* Code Scanning */}
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            {securityData?.codeScanningActive ? (
+                              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                            ) : (
+                              <AlertTriangle className="w-4 h-4 text-neutral-500" />
+                            )}
+                            <span className="text-neutral-300 print:text-black">GitHub Code Scanning Actions</span>
+                          </div>
+                          <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded font-bold uppercase border ${
+                            securityData?.codeScanningActive 
+                              ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" 
+                              : "text-neutral-500 bg-neutral-500/5 border-neutral-850"
+                          }`}>
+                            {securityData?.codeScanningActive ? "ACTIVE" : "INACTIVE / PRIVATE"}
+                          </span>
+                        </div>
+
+                        {/* License */}
+                        {repoData && (
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              {repoData.license && repoData.license !== "None" ? (
+                                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                              ) : (
+                                <AlertTriangle className="w-4 h-4 text-neutral-500" />
+                              )}
+                              <span className="text-neutral-300 print:text-black">Software License Compliance</span>
+                            </div>
+                            <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded font-bold uppercase border ${
+                              repoData.license && repoData.license !== "None"
+                                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" 
+                                : "text-neutral-500 bg-neutral-500/5 border-neutral-850"
+                            }`}>
+                              {repoData.license?.spdx_id || repoData.license?.name || "NONE"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dev Timelines & Code Activity */}
+                    <div className="bg-neutral-900/40 border border-neutral-800/80 p-4 rounded-lg space-y-3 print:bg-white print:border-neutral-300">
+                      <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold border-b border-neutral-850 pb-1.5">Latest Code Stream Activity</span>
+                      <div className="space-y-2.5 pt-1">
+                        {activityData?.commits && activityData.commits.length > 0 ? (
+                          activityData.commits.slice(0, 3).map((commit: any, idx: number) => (
+                            <div key={idx} className="flex items-start justify-between gap-3 text-[11px] border-b border-neutral-850/30 last:border-0 pb-1.5 last:pb-0">
+                              <div className="space-y-0.5 min-w-0">
+                                <span className="text-neutral-300 print:text-black font-sans font-medium line-clamp-1">{commit.message}</span>
+                                <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-500">
+                                  <span className="text-neutral-400">{commit.author}</span>
+                                  <span>•</span>
+                                  <span>{commit.date ? new Date(commit.date).toLocaleDateString() : ""}</span>
+                                </div>
+                              </div>
+                              <span className="text-[9px] font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1 py-0.5 rounded shrink-0">
+                                {commit.sha}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <span className="text-neutral-500 font-mono text-[10px] italic py-2 block text-center">No recent commit logs resolved.</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Key Evidence References */}
+                  <div className="space-y-2 pt-2 border-t border-neutral-850/60">
+                    <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold">Key Corroborating Evidences</span>
+                    <div className="space-y-1.5">
+                      {githubEvs.map((ev: any) => (
+                        <div key={ev.id} className="flex items-center justify-between text-xs bg-neutral-900/80 border border-neutral-850 px-3 py-2 rounded">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[9px] font-mono text-white bg-neutral-950 border border-neutral-850 px-1.5 py-0.5 rounded shrink-0">
+                              {ev.id}
+                            </span>
+                            <span className="text-neutral-300 print:text-black truncate">{ev.title}</span>
+                          </div>
+                          <span className="text-[9px] font-mono text-neutral-500 shrink-0">
+                            CONFIDENCE: {ev.confidence}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>7. Strategic Security & Countermeasure Recommendations</span>
+                <span>8. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (
@@ -716,7 +1133,7 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <Globe className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>8. Source Footprint Citations</span>
+                <span>9. Source Footprint Citations</span>
               </h3>
 
               {response.sources && response.sources.length > 0 ? (
@@ -753,7 +1170,7 @@ export default function InvestigationReport({ response, targetType, targetQuery 
               >
                 <div className="flex items-center space-x-2">
                   <Cpu className="w-4 h-4 text-neutral-400 animate-pulse" />
-                  <span>9. Raw AI Response JSON Payload</span>
+                  <span>10. Raw AI Response JSON Payload</span>
                 </div>
                 <div className="flex items-center space-x-2.5">
                   <span className="text-[9px] font-normal text-neutral-500 lowercase bg-neutral-900 px-2 py-0.5 rounded border border-neutral-850">

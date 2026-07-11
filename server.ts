@@ -8,6 +8,7 @@ import { WhoisConnector } from "./src/connectors/whois";
 import { DnsConnector } from "./src/connectors/dns";
 import { NewsConnector } from "./src/connectors/news";
 import { GithubConnector } from "./src/connectors/github";
+import { GithubIntelligenceConnector } from "./src/connectors/github-intel";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
 import { validateInvestigationInput } from "./utils/validation";
@@ -386,6 +387,7 @@ const whoisConnector = new WhoisConnector();
 const dnsConnector = new DnsConnector();
 const newsConnector = new NewsConnector();
 const githubConnector = new GithubConnector();
+const githubIntelligenceConnector = new GithubIntelligenceConnector();
 
 const investigationService = new InvestigationService([
   googleConnector,
@@ -393,6 +395,7 @@ const investigationService = new InvestigationService([
   dnsConnector,
   newsConnector,
   githubConnector,
+  githubIntelligenceConnector,
 ]);
 
 // Map incoming API target types to our internal query-engine categories

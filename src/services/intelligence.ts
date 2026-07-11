@@ -181,11 +181,11 @@ export class IntelligenceService {
 
     // Identify active and missing sensors
     const sensors = {
-      "WHOIS Registry Database": result.evidences.some(e => e.source.toLowerCase().includes("whois")),
-      "DNS Zone Resolver": result.evidences.some(e => e.source.toLowerCase().includes("dns")),
-      "GitHub Indexer": result.evidences.some(e => e.source.toLowerCase().includes("github")),
-      "Google Search Indexer": result.evidences.some(e => e.source.toLowerCase().includes("google") || e.source.toLowerCase().includes("search")),
-      "Global News & Media": result.evidences.some(e => e.source.toLowerCase().includes("news") || e.source.toLowerCase().includes("press") || e.source.toLowerCase().includes("media"))
+      "WHOIS Registry Database": result.evidences.some(e => (e as any).source?.toLowerCase().includes("whois") || e.connector?.toLowerCase().includes("whois")),
+      "DNS Zone Resolver": result.evidences.some(e => (e as any).source?.toLowerCase().includes("dns") || e.connector?.toLowerCase().includes("dns")),
+      "GitHub Indexer": result.evidences.some(e => (e as any).source?.toLowerCase().includes("github") || e.connector?.toLowerCase().includes("github")),
+      "Google Search Indexer": result.evidences.some(e => (e as any).source?.toLowerCase().includes("google") || (e as any).source?.toLowerCase().includes("search") || e.connector?.toLowerCase().includes("google") || e.connector?.toLowerCase().includes("search")),
+      "Global News & Media": result.evidences.some(e => (e as any).source?.toLowerCase().includes("news") || (e as any).source?.toLowerCase().includes("press") || (e as any).source?.toLowerCase().includes("media") || e.connector?.toLowerCase().includes("news") || e.connector?.toLowerCase().includes("press") || e.connector?.toLowerCase().includes("media"))
     };
 
     const activeSensorsList = Object.entries(sensors)
@@ -240,6 +240,17 @@ export class IntelligenceService {
         statement: `Detected ${entityCount} entities and ${relationshipCount} connections across active sensors (${activeSensorsList.join(", ")}).`,
         type: "Verified Finding",
         evidenceIds: evidenceIds
+      });
+
+      // Explicitly extract real DNS resolution evidences as dedicated "Verified Finding" items
+      const dnsEvidences = result.evidences.filter(e => e.id && e.id.startsWith("ev_dns_") && e.id !== "ev_dns_no_records");
+      dnsEvidences.forEach(ev => {
+        findings.push({
+          statement: `[DNS Resolver] Verified ${ev.title}: ${ev.description}`,
+          type: "Verified Finding",
+          evidenceIds: [ev.id]
+        });
+        keyFindings.push(`Verified Findings [DNS]: Verified ${ev.title} - ${ev.description}`);
       });
 
       if (missingSensorsList.length > 0) {
