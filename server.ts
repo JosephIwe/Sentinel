@@ -3,6 +3,13 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { GoogleConnector } from "./src/connectors/google";
+import { WhoisConnector } from "./src/connectors/whois";
+import { DnsConnector } from "./src/connectors/dns";
+import { NewsConnector } from "./src/connectors/news";
+import { GithubConnector } from "./src/connectors/github";
+import { InvestigationService } from "./src/services/investigation";
+import { IntelligenceService } from "./src/services/intelligence";
 
 dotenv.config();
 
@@ -368,6 +375,58 @@ app.get("/api/metrics", (req, res) => {
       dataExtractedBytes: totalReq * 4124
     }
   });
+});
+
+// 6. Cyber-Threat and Asset Discovery Investigation Routes
+
+// Instantiate connectors and service instances
+const googleConnector = new GoogleConnector();
+const whoisConnector = new WhoisConnector();
+const dnsConnector = new DnsConnector();
+const newsConnector = new NewsConnector();
+const githubConnector = new GithubConnector();
+
+const investigationService = new InvestigationService([
+  googleConnector,
+  whoisConnector,
+  dnsConnector,
+  newsConnector,
+  githubConnector,
+]);
+
+// Endpoint to run parallel multi-source investigation
+app.post("/api/investigate", async (req, res) => {
+  const { term, type } = req.body;
+  if (!term) {
+    return res.status(400).json({ error: "Search term is required for investigation" });
+  }
+
+  try {
+    const query = { term, type: type || "Generic" };
+    const result = await investigationService.investigate(query);
+    res.json(result);
+  } catch (err: any) {
+    console.error("Investigation orchestration failure:", err);
+    res.status(500).json({ error: "Failed to run investigation", details: err.message });
+  }
+});
+
+// Endpoint to analyze the investigation result with AI Intelligence Service
+app.post("/api/intelligence/analyze", async (req, res) => {
+  const { result } = req.body;
+  if (!result || !result.query || !result.entities) {
+    return res.status(400).json({ error: "Valid InvestigationResult is required for analysis" });
+  }
+
+  try {
+    const aiClient = getAiClient();
+    const intelligenceService = new IntelligenceService(aiClient);
+    const report = await intelligenceService.analyze(result);
+    res.json(report);
+  } catch (err: any) {
+    console.error("AI Intelligence meta-analysis failure:", err);
+    res.status(500).json({ error: "Failed to analyze investigation", details: err.message });
+  }
 });
 
 async function startServer() {

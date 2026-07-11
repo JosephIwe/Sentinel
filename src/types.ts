@@ -112,3 +112,13 @@ export interface InvestigationResult {
   confidence: number; // 0.0 to 1.0 (or percentage)
   sources: string[];
 }
+
+export interface IntelligenceReport {
+  summary: string;
+  executiveSummary: string;
+  keyFindings: string[];
+  riskScore: number;
+  confidence: number;
+  recommendations: string[];
+  timeline: TimelineEvent[];
+}
