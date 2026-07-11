@@ -57,10 +57,15 @@ export interface InvestigationQuery {
 
 export interface Evidence {
   id: string;
-  source: string; // e.g. "WHOIS Database", "Google Search indexer"
-  strength: number; // 0.0 to 1.0 (relevance/certainty multiplier)
+  connector: string;
+  title: string;
   description: string;
-  url?: string;
+  confidence: number; // percentage (0-100) or score
+  timestamp: string;
+  rawData: any;
+  source?: string; // backward compatibility
+  strength?: number; // backward compatibility
+  url?: string; // backward compatibility
 }
 
 export interface Entity {
@@ -68,6 +73,7 @@ export interface Entity {
   name: string;
   type: string; // e.g. "Domain", "Organization", "Person", "IPAddress", "Repository", "Keyword"
   metadata: Record<string, any>;
+  evidenceIds: string[]; // Reference to evidence items
 }
 
 export interface Relationship {
@@ -75,6 +81,7 @@ export interface Relationship {
   target: string; // Entity name or ID
   type: string;   // e.g. "RESOLVES_TO", "OWNED_BY", "CONTRIBUTED_TO", "MENTIONED_IN"
   metadata?: Record<string, any>;
+  evidenceIds: string[]; // Reference to evidence items
 }
 
 export interface TimelineEvent {
@@ -113,10 +120,17 @@ export interface InvestigationResult {
   sources: string[];
 }
 
+export interface IntelligenceFinding {
+  statement: string;
+  type: "Verified Finding" | "AI Assessment";
+  evidenceIds: string[];
+}
+
 export interface IntelligenceReport {
   summary: string;
   executiveSummary: string;
   keyFindings: string[];
+  findings?: IntelligenceFinding[];
   riskScore: number;
   confidence: number;
   recommendations: string[];

@@ -84,6 +84,7 @@ export class InvestigationService {
 
     rawEntities.forEach((ent) => {
       const canonicalKey = `${ent.type.toLowerCase()}:${ent.name.trim().toLowerCase()}`;
+      const evidenceIds = ent.evidenceIds || [];
       
       if (mergedEntitiesMap.has(canonicalKey)) {
         // Merge metadata intelligently
@@ -93,11 +94,12 @@ export class InvestigationService {
           ...ent.metadata,
           mergedFrom: Array.from(new Set([...(existing.metadata.mergedFrom || []), ent.id]))
         };
+        existing.evidenceIds = Array.from(new Set([...(existing.evidenceIds || []), ...evidenceIds]));
         // Log translation from this duplicate entity ID to the canonical one
         idTranslationMap.set(ent.id, existing.id);
       } else {
         // First time seeing this entity. Establish as canonical.
-        mergedEntitiesMap.set(canonicalKey, { ...ent });
+        mergedEntitiesMap.set(canonicalKey, { ...ent, evidenceIds: [...evidenceIds] });
         idTranslationMap.set(ent.id, ent.id);
       }
     });
@@ -107,8 +109,7 @@ export class InvestigationService {
     // 3. Normalize and link relationships
     // Replace relationship source and target identifiers with canonical entity IDs.
     // Ensure we don't return duplicates or self-referential relations.
-    const relationshipSet = new Set<string>();
-    const relationships: Relationship[] = [];
+    const relationshipMap = new Map<string, Relationship>();
 
     rawRelationships.forEach((rel) => {
       const canonicalSource = idTranslationMap.get(rel.source) || rel.source;
@@ -118,16 +119,22 @@ export class InvestigationService {
       if (canonicalSource === canonicalTarget) return;
 
       const relKey = `${canonicalSource}->${rel.type}->${canonicalTarget}`;
-      if (!relationshipSet.has(relKey)) {
-        relationshipSet.add(relKey);
-        relationships.push({
+      const evidenceIds = rel.evidenceIds || [];
+      if (relationshipMap.has(relKey)) {
+        const existing = relationshipMap.get(relKey)!;
+        existing.evidenceIds = Array.from(new Set([...(existing.evidenceIds || []), ...evidenceIds]));
+      } else {
+        relationshipMap.set(relKey, {
           source: canonicalSource,
           target: canonicalTarget,
           type: rel.type,
           metadata: rel.metadata,
+          evidenceIds: [...evidenceIds]
         });
       }
     });
+
+    const relationships = Array.from(relationshipMap.values());
 
     // 4. Sort and deduplicate timeline events
     const timeline = rawTimeline

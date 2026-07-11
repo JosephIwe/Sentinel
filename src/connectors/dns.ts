@@ -31,7 +31,8 @@ export class DnsConnector implements Connector {
       metadata: {
         nameservers: ["ns1.cloudflare.com", "ns2.cloudflare.com"],
         dnssec: "unsigned",
-      }
+      },
+      evidenceIds: ["ev_dns_a_record", "ev_dns_mx_record"]
     });
 
     // 2. IP Address A records
@@ -44,7 +45,8 @@ export class DnsConnector implements Connector {
         provider: "Cloudflare, Inc.",
         asn: "AS13335",
         geo: "US / California",
-      }
+      },
+      evidenceIds: ["ev_dns_a_record"]
     });
 
     // 3. Mail servers MX records
@@ -56,7 +58,8 @@ export class DnsConnector implements Connector {
       metadata: {
         provider: "Microsoft Office 365",
         priority: 10,
-      }
+      },
+      evidenceIds: ["ev_dns_mx_record"]
     });
 
     // Relationships
@@ -64,14 +67,16 @@ export class DnsConnector implements Connector {
       source: "ent_dns_domain",
       target: "ent_dns_ip",
       type: "RESOLVES_TO",
-      metadata: { recordType: "A", ttl: 300 }
+      metadata: { recordType: "A", ttl: 300 },
+      evidenceIds: ["ev_dns_a_record"]
     });
 
     relationships.push({
       source: "ent_dns_domain",
       target: "ent_dns_mx",
       type: "RESOLVES_TO",
-      metadata: { recordType: "MX", ttl: 3600 }
+      metadata: { recordType: "MX", ttl: 3600 },
+      evidenceIds: ["ev_dns_mx_record"]
     });
 
     timeline.push({
@@ -83,17 +88,32 @@ export class DnsConnector implements Connector {
 
     evidences.push({
       id: "ev_dns_a_record",
+      connector: this.name,
+      title: "DNS A Record Resolution",
+      description: `Discovered active A-record mapping ${domain} to secure server node ${simulatedIp}.`,
+      confidence: 95,
+      timestamp,
+      rawData: {
+        A: [simulatedIp],
+        AAAA: ["2606:4700:3030::6815:2b70"],
+      },
       source: "Cloudflare Nameservers",
       strength: 0.95,
-      description: `Discovered active A-record mapping ${domain} to secure server node ${simulatedIp}.`,
       url: `https://dns.google/resolve?name=${domain}`
     });
 
     evidences.push({
       id: "ev_dns_mx_record",
+      connector: this.name,
+      title: "DNS MX Record Alignment",
+      description: `Discovered corporate mail server alignment routing through Microsoft Office 365.`,
+      confidence: 85,
+      timestamp,
+      rawData: {
+        MX: [`10 ${simulatedMx}`],
+      },
       source: "Office 365 Routing",
       strength: 0.85,
-      description: `Discovered corporate mail server alignment routing through Microsoft Office 365.`,
       url: `https://dns.google/resolve?name=${domain}`
     });
 

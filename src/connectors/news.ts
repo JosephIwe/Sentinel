@@ -29,7 +29,8 @@ export class NewsConnector implements Connector {
       metadata: {
         sentimentIndex: 0.72,
         mediaVisiblityRating: "Moderate",
-      }
+      },
+      evidenceIds: ["ev_news_tc_feature"]
     });
 
     entities.push({
@@ -39,7 +40,8 @@ export class NewsConnector implements Connector {
       metadata: {
         category: "Media Publisher",
         domain: "techcrunch.com",
-      }
+      },
+      evidenceIds: ["ev_news_tc_feature"]
     });
 
     relationships.push({
@@ -49,7 +51,8 @@ export class NewsConnector implements Connector {
       metadata: { 
         articleTitle: `${targetName} unveils breakthrough architectural automation layers`,
         relevance: 0.95
-      }
+      },
+      evidenceIds: ["ev_news_tc_feature"]
     });
 
     timeline.push({
@@ -68,9 +71,20 @@ export class NewsConnector implements Connector {
 
     evidences.push({
       id: "ev_news_tc_feature",
+      connector: this.name,
+      title: "TechCrunch Press Feature",
+      description: `Found highly correlated article: "${targetName} unveils breakthrough architectural automation layers" confirming target presence.`,
+      confidence: 80,
+      timestamp,
+      rawData: {
+        headline: `${targetName} unveils breakthrough architectural automation layers`,
+        outlet: "TechCrunch",
+        publishedAt: "2025-02-18",
+        sentiment: "Highly Positive",
+        author: "Tech Press Syndicate"
+      },
       source: "TechCrunch Publications",
       strength: 0.8,
-      description: `Found highly correlated article: "${targetName} unveils breakthrough architectural automation layers" confirming target presence.`,
       url: `https://techcrunch.com/search/${encodeURIComponent(searchTerm)}`
     });
 

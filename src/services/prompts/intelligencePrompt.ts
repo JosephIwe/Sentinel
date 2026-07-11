@@ -12,11 +12,10 @@ Do not include any conversational preamble, postscript, or markdown backticks (\
 
 CRITICAL ANALYTICAL DIRECTIVES:
 1. ONLY summarize evidence returned by the InvestigationService. Do NOT invent, assume, or extrapolate any third-party companies, IP addresses, domains, names, server technologies, timelines, or relationships.
-2. If a connector did not return information, you MUST explicitly state in the "keyFindings" and "executiveSummary" that no verified public evidence was found from that connector.
-3. Separate the key findings list ("keyFindings" array) strictly into these three parts:
-   - "Verified Findings: <facts/evidence directly returned by the sensors>"
-   - "Insufficient Evidence: <explicitly list which sensors failed/did not return data, and what gaps remain>"
-   - "AI Assessment: <proportional analysis based ONLY on the observed data>"
+2. If a connector did not return information, you MUST explicitly state in the "executiveSummary" and "findings" that no verified public evidence was found from that connector.
+3. Classify every item in the "findings" array strictly:
+   - If there is direct, supporting evidence item(s) in the "DISCOVERED EVIDENCE CHANNELS" list, set "type" to "Verified Finding" and include the supporting evidence IDs in the "evidenceIds" array.
+   - If a finding is based on logical deduction, high-level threat assessment, or absence of evidence (i.e. cannot be directly mapped to a specific evidence item), you MUST classify it as "AI Assessment" and set "evidenceIds" to an empty array [].
 4. Add a clear, dedicated section or paragraph in the "executiveSummary" explaining why the confidence score was assigned based on evidence volume, cross-sensor validation, and sensor coverage.
 5. If all connectors returned mock, empty, or fallback data, you MUST generate a cautious, brief summary instead of a detailed report. Explicitly warn that no verified records or threat telemetry exist for this target in any connector.`;
 
@@ -83,12 +82,9 @@ REQUIRED METRICS:
 
 OPERATIONAL DIRECTIVES:
 1. STRICT FACTUAL ACCURACY: Summarize ONLY the evidence returned. Do NOT invent, assume, or speculate. Never introduce any companies, infrastructure, tech, dates, or relations not explicitly listed above.
-2. MISSING SENSORS MANDATE: For any sensor listed under "INACTIVE/MISSING SENSORS" (e.g. ${missingSensors.join(", ")}), you MUST explicitly state in the executiveSummary and keyFindings that no verified public evidence was found from that source.
+2. MISSING SENSORS MANDATE: For any sensor listed under "INACTIVE/MISSING SENSORS" (e.g. ${missingSensors.join(", ")}), you MUST explicitly state in the executiveSummary and findings that no verified public evidence was found from that source.
 3. CAUTIOUS REPORTING MANDATE: If "MOCK OR EMPTY DATA DETECTED" is "YES", do NOT generate a detailed, speculative analysis. Instead, generate a highly cautious, brief summary stating explicitly that no verified threat telemetry or public records exist for this target.
-4. KEY FINDINGS SEPARATION: In the "keyFindings" array, you MUST output exactly three findings (or groups) starting with:
-   - "Verified Findings: <facts and corroborating evidence directly mapped by active sensors>"
-   - "Insufficient Evidence: <explicitly listing which sensors returned no info, and what specific gaps remain>"
-   - "AI Assessment: <cautious high-level threat assessment/posture based strictly on the above findings>"
+4. EVIDENCE DISCOVERY LINKAGE: Every major item in the "findings" array MUST explicitly list the supporting evidence IDs from the DISCOVERED EVIDENCE CHANNELS list. If there is no specific evidence, you MUST classify it as "AI Assessment" and set "evidenceIds" to an empty array []. Otherwise, classify as "Verified Finding" and specify one or more matching "evidenceIds".
 5. CONFIDENCE EXPLANATION MANDATE: Inside the "executiveSummary", you MUST include a dedicated section/paragraph titled "CONFIDENCE SCORE EXPLANATION" explaining precisely why the confidence score of ${result.confidence}% was assigned based on sensor coverage and cross-sensor validation.
 
 Synthesize these vectors into a single robust JSON payload conforming to the requested responseSchema. Do not truncate.`;

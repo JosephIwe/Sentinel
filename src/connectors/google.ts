@@ -32,7 +32,8 @@ export class GoogleConnector implements Connector {
           category: "Infrastructure",
           relevanceScore: 0.95,
           indexedPages: 14200,
-        }
+        },
+        evidenceIds: ["ev_google_site_crawl"]
       });
 
       entities.push({
@@ -42,14 +43,16 @@ export class GoogleConnector implements Connector {
         metadata: {
           confidence: "High",
           country: "US",
-        }
+        },
+        evidenceIds: ["ev_google_site_crawl"]
       });
 
       relationships.push({
         source: "ent_org_domain",
         target: "ent_corp_owner",
         type: "OWNED_BY",
-        metadata: { discoveredBy: "Google Crawl", confidence: 0.9 }
+        metadata: { discoveredBy: "Google Crawl", confidence: 0.9 },
+        evidenceIds: ["ev_google_site_crawl"]
       });
 
       timeline.push({
@@ -61,9 +64,19 @@ export class GoogleConnector implements Connector {
 
       evidences.push({
         id: "ev_google_site_crawl",
+        connector: this.name,
+        title: "Google Search Crawler Indexing",
+        description: `Verified high-density crawl signature for ${domain} with 14,200 indexed entrypoints.`,
+        confidence: 90,
+        timestamp,
+        rawData: {
+          indexedPagesCount: 14200,
+          searchQuery: `site:${domain}`,
+          crawlFrequency: "daily",
+          cacheStatus: "fresh"
+        },
         source: "Google Search Console",
         strength: 0.9,
-        description: `Verified high-density crawl signature for ${domain} with 14,200 indexed entrypoints.`,
         url: `https://www.google.com/search?q=site%3A${domain}`
       });
 
@@ -77,7 +90,8 @@ export class GoogleConnector implements Connector {
         metadata: {
           category: "Target Node",
           searchVolume: "2.4k/mo",
-        }
+        },
+        evidenceIds: ["ev_google_knowledge_graph"]
       });
 
       entities.push({
@@ -86,14 +100,16 @@ export class GoogleConnector implements Connector {
         type: "Keyword",
         metadata: {
           url: `https://www.linkedin.com/in/${encodeURIComponent(searchTerm.replace(/\s+/g, ""))}`
-        }
+        },
+        evidenceIds: ["ev_google_knowledge_graph"]
       });
 
       relationships.push({
         source: "ent_query_subject",
         target: "ent_linked_social",
         type: "MENTIONED_IN",
-        metadata: { rank: 1 }
+        metadata: { rank: 1 },
+        evidenceIds: ["ev_google_knowledge_graph"]
       });
 
       timeline.push({
@@ -105,9 +121,19 @@ export class GoogleConnector implements Connector {
 
       evidences.push({
         id: "ev_google_knowledge_graph",
+        connector: this.name,
+        title: "Google Knowledge Graph Brand Association",
+        description: `Discovered persistent brand entity association for "${searchTerm}".`,
+        confidence: 85,
+        timestamp,
+        rawData: {
+          brandQuery: searchTerm,
+          entityType: query.type || "Generic",
+          socialReferences: ["LinkedIn Profile Node"],
+          knowledgeGraphId: "kg:/g/11s_brand_match"
+        },
         source: "Google Knowledge Graph API",
         strength: 0.85,
-        description: `Discovered persistent brand entity association for "${searchTerm}".`,
         url: `https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`
       });
 

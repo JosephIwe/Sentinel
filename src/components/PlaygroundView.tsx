@@ -14,6 +14,7 @@ interface EntityNode {
   type: string;
   details?: string;
   confidence: number;
+  evidenceIds?: string[];
 }
 
 interface RelationshipEdge {
@@ -21,6 +22,7 @@ interface RelationshipEdge {
   to: string;
   type: string;
   description?: string;
+  evidenceIds?: string[];
 }
 
 interface TimelineEvent {
@@ -28,6 +30,22 @@ interface TimelineEvent {
   event: string;
   description: string;
   source: string;
+}
+
+interface Evidence {
+  id: string;
+  connector: string;
+  title: string;
+  description: string;
+  confidence: number;
+  timestamp: string;
+  rawData: any;
+}
+
+interface IntelligenceFinding {
+  statement: string;
+  type: "Verified Finding" | "AI Assessment";
+  evidenceIds: string[];
 }
 
 interface InvestigationApiResponse {
@@ -39,6 +57,8 @@ interface InvestigationApiResponse {
   confidence: number;
   recommendations: string[];
   sources: string[];
+  evidences?: Evidence[];
+  findings?: IntelligenceFinding[];
 }
 
 // Quick-fill presets to make testing fast and comfortable

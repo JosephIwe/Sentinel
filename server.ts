@@ -449,6 +449,8 @@ app.post("/api/investigate", async (req, res) => {
         confidence: intelligenceReport.confidence,
         recommendations: intelligenceReport.recommendations,
         sources: investigationResult.sources,
+        evidences: investigationResult.evidences,
+        findings: intelligenceReport.findings || [],
       });
 
     } catch (err: any) {

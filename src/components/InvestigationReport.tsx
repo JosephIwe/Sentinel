@@ -11,6 +11,7 @@ interface EntityNode {
   type: string;
   details?: string;
   confidence: number;
+  evidenceIds?: string[];
 }
 
 interface RelationshipEdge {
@@ -18,6 +19,7 @@ interface RelationshipEdge {
   to: string;
   type: string;
   description?: string;
+  evidenceIds?: string[];
 }
 
 interface TimelineEvent {
@@ -25,6 +27,22 @@ interface TimelineEvent {
   event: string;
   description: string;
   source: string;
+}
+
+interface IntelligenceFinding {
+  statement: string;
+  type: "Verified Finding" | "AI Assessment";
+  evidenceIds: string[];
+}
+
+interface Evidence {
+  id: string;
+  connector: string;
+  title: string;
+  description: string;
+  confidence: number;
+  timestamp: string;
+  rawData: any;
 }
 
 interface InvestigationApiResponse {
@@ -36,6 +54,80 @@ interface InvestigationApiResponse {
   confidence: number;
   recommendations: string[];
   sources: string[];
+  evidences?: Evidence[];
+  findings?: IntelligenceFinding[];
+}
+
+export function EvidenceViewer({ evidenceIds, evidencesList = [] }: { evidenceIds: string[]; evidencesList?: Evidence[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (!evidenceIds || evidenceIds.length === 0) return null;
+
+  const matchedEvidences = evidencesList.filter(ev => evidenceIds.includes(ev.id));
+
+  if (matchedEvidences.length === 0) return null;
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-neutral-850/80 print:border-neutral-200 pt-3.5 print:hidden">
+      <div className="flex items-center space-x-1.5 text-[9px] font-mono uppercase tracking-wider text-neutral-400 print:text-neutral-600">
+        <Shield className="w-3.5 h-3.5" />
+        <span>Corroborated Evidence ({matchedEvidences.length})</span>
+      </div>
+      <div className="space-y-1.5">
+        {matchedEvidences.map((ev) => {
+          const isExpanded = expandedId === ev.id;
+          return (
+            <div key={ev.id} className="border border-neutral-850 print:border-neutral-300 rounded-md bg-neutral-950/40 print:bg-neutral-50 overflow-hidden">
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : ev.id)}
+                className="w-full flex items-center justify-between p-2 hover:bg-neutral-900/40 transition-colors text-left outline-none cursor-pointer"
+              >
+                <div className="space-y-0.5">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-[9px] font-mono font-bold text-white print:text-black bg-neutral-900 print:bg-neutral-200 px-1.5 py-0.5 rounded border border-neutral-850 print:border-neutral-350 shrink-0">
+                      {ev.connector}
+                    </span>
+                    <span className="text-xs font-medium text-neutral-300 print:text-neutral-800 truncate">
+                      {ev.title || ev.description}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 shrink-0">
+                  <span className="text-[9px] font-mono text-neutral-400">
+                    Confidence: {ev.confidence}%
+                  </span>
+                  {isExpanded ? <EyeOff className="w-3.5 h-3.5 text-neutral-500" /> : <Eye className="w-3.5 h-3.5 text-neutral-500" />}
+                </div>
+              </button>
+              {isExpanded && (
+                <div className="p-3 bg-neutral-950 border-t border-neutral-850 print:bg-white text-[11px] space-y-2.5 leading-relaxed">
+                  <p className="text-neutral-300 print:text-neutral-700 font-sans font-light">
+                    {ev.description}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 text-[10px] font-mono text-neutral-400 print:text-neutral-600 border-t border-neutral-900/60 pt-2 pb-1">
+                    <div>
+                      <span className="text-neutral-500 font-bold uppercase block">Source:</span>
+                      {ev.connector}
+                    </div>
+                    <div>
+                      <span className="text-neutral-500 font-bold uppercase block">Timestamp:</span>
+                      {new Date(ev.timestamp).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-mono font-bold text-neutral-500 uppercase block">Raw connector output:</span>
+                    <pre className="p-2 bg-black/60 print:bg-neutral-100 rounded text-[10px] font-mono text-neutral-300 print:text-neutral-800 overflow-x-auto border border-neutral-900 print:border-neutral-200 max-h-40">
+                      {JSON.stringify(ev.rawData || {}, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 interface InvestigationReportProps {
@@ -405,12 +497,55 @@ export default function InvestigationReport({ response, targetType, targetQuery 
               <div className="flex items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
                   <Cpu className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                  <span>4. Mapped Asset Entities & Verified Findings</span>
+                  <span>4. Key Analytical Findings & Mapped Asset Entities</span>
                 </h3>
                 <span className="text-[10px] font-mono text-neutral-500">
-                  TOTAL DISCOVERED: {response.entities?.length || 0}
+                  ENTITIES: {response.entities?.length || 0}
                 </span>
               </div>
+
+              {/* Structured Intelligence Findings & Assessments */}
+              {response.findings && response.findings.length > 0 && (
+                <div className="space-y-3.5 border-b border-neutral-850/60 pb-6 mb-6 print:border-neutral-300">
+                  <div className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wider block mb-2">
+                    Intelligence Findings & AI Assessments:
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    {response.findings.map((finding, idx) => {
+                      const isVerified = finding.type === "Verified Finding";
+                      return (
+                        <div 
+                          key={idx} 
+                          className={`p-4 rounded-lg border bg-neutral-900/40 print:bg-white print:border-neutral-300 transition-all ${
+                            isVerified 
+                              ? "border-emerald-800/40 hover:border-emerald-700/60" 
+                              : "border-neutral-800/80 hover:border-neutral-700/80"
+                          }`}
+                        >
+                          <div className="space-y-1.5">
+                            <div>
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-mono font-bold border ${
+                                isVerified 
+                                  ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" 
+                                  : "text-neutral-400 bg-neutral-500/10 border-neutral-500/20"
+                              }`}>
+                                {finding.type}
+                              </span>
+                            </div>
+                            <p className="text-xs text-neutral-200 print:text-neutral-800 font-sans leading-relaxed select-text font-light">
+                              {finding.statement}
+                            </p>
+                          </div>
+                          
+                          {isVerified && finding.evidenceIds && finding.evidenceIds.length > 0 && (
+                            <EvidenceViewer evidenceIds={finding.evidenceIds} evidencesList={response.evidences || []} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {response.entities && response.entities.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-1">
@@ -434,6 +569,8 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                           {entity.details}
                         </p>
                       )}
+
+                      <EvidenceViewer evidenceIds={entity.evidenceIds || []} evidencesList={response.evidences || []} />
 
                       <div className="mt-3 pt-2.5 border-t border-neutral-950 print:border-neutral-200 flex items-center justify-between text-[8px] font-mono text-neutral-500">
                         <span>CONFIDENCE RATIO: {entity.confidence || 100}%</span>
@@ -528,6 +665,8 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                           {relation.description}
                         </p>
                       )}
+
+                      <EvidenceViewer evidenceIds={relation.evidenceIds || []} evidencesList={response.evidences || []} />
                     </div>
                   ))}
                 </div>

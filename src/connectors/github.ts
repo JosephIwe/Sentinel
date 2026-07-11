@@ -33,7 +33,8 @@ export class GithubConnector implements Connector {
         forks: 24,
         primaryLanguage: "TypeScript",
         license: "Apache-2.0",
-      }
+      },
+      evidenceIds: ["ev_gh_repo_activity"]
     });
 
     entities.push({
@@ -43,14 +44,16 @@ export class GithubConnector implements Connector {
       metadata: {
         location: "San Francisco, CA",
         verified: true,
-      }
+      },
+      evidenceIds: ["ev_gh_repo_activity"]
     });
 
     relationships.push({
       source: "ent_gh_repo",
       target: "ent_gh_owner",
       type: "OWNED_BY",
-      metadata: { role: "Organization space" }
+      metadata: { role: "Organization space" },
+      evidenceIds: ["ev_gh_repo_activity"]
     });
 
     const contributorName = queryLower.includes(" ") ? searchTerm.split(" ")[0].toLowerCase() : "dev-sentinel";
@@ -61,14 +64,16 @@ export class GithubConnector implements Connector {
       metadata: {
         contributions: 142,
         profileUrl: `https://github.com/${contributorName}`
-      }
+      },
+      evidenceIds: ["ev_gh_repo_activity"]
     });
 
     relationships.push({
       source: "ent_gh_contributor",
       target: "ent_gh_repo",
       type: "CONTRIBUTED_TO",
-      metadata: { commits: 88, role: "Lead Maintainer" }
+      metadata: { commits: 88, role: "Lead Maintainer" },
+      evidenceIds: ["ev_gh_repo_activity"]
     });
 
     timeline.push({
@@ -87,9 +92,23 @@ export class GithubConnector implements Connector {
 
     evidences.push({
       id: "ev_gh_repo_activity",
+      connector: this.name,
+      title: "GitHub Codebase Repository Discovery",
+      description: `Found active public codebase repository github.com/${orgName}/${repoName} with strong commit timeline.`,
+      confidence: 90,
+      timestamp,
+      rawData: {
+        repository: `github.com/${orgName}/${repoName}`,
+        stars: 342,
+        forks: 24,
+        primaryLanguage: "TypeScript",
+        license: "Apache-2.0",
+        contributors: [contributorName],
+        openIssues: 3,
+        activeBranches: ["main", "dev-v2"]
+      },
       source: "GitHub GraphQL API",
       strength: 0.9,
-      description: `Found active public codebase repository github.com/${orgName}/${repoName} with strong commit timeline.`,
       url: `https://github.com/${orgName}/${repoName}`
     });
 

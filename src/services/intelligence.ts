@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { InvestigationResult, IntelligenceReport, TimelineEvent } from "../types";
+import { InvestigationResult, IntelligenceReport, TimelineEvent, IntelligenceFinding } from "../types";
 import { INTEL_SYSTEM_INSTRUCTION, generateIntelligencePrompt } from "./prompts/intelligencePrompt";
 
 /**
@@ -61,6 +61,19 @@ export class IntelligenceService {
                 items: { type: Type.STRING },
                 description: "A list of up to 5 critical analytical insights or structural discoveries."
               },
+              findings: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    statement: { type: Type.STRING, description: "Factual insight about the target." },
+                    type: { type: Type.STRING, enum: ["Verified Finding", "AI Assessment"], description: "Classified finding type" },
+                    evidenceIds: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Matching evidence IDs" }
+                  },
+                  required: ["statement", "type", "evidenceIds"]
+                },
+                description: "Detailed findings with direct evidence links."
+              },
               riskScore: {
                 type: Type.INTEGER,
                 description: "An integer from 0 to 100 representing calculated exposure/threat risk."
@@ -93,6 +106,7 @@ export class IntelligenceService {
               "summary",
               "executiveSummary",
               "keyFindings",
+              "findings",
               "riskScore",
               "confidence",
               "recommendations",
@@ -119,6 +133,9 @@ export class IntelligenceService {
         Array.isArray(parsed.recommendations) &&
         Array.isArray(parsed.timeline)
       ) {
+        if (!parsed.findings) {
+          parsed.findings = [];
+        }
         return parsed;
       }
 
@@ -191,22 +208,62 @@ export class IntelligenceService {
 
     // Formulate structured keyFindings with strict categories
     const keyFindings: string[] = [];
+    const findings: IntelligenceFinding[] = [];
 
     if (isMockOrEmpty) {
       keyFindings.push(`Verified Findings: No verified public indicators or infrastructure registration found in any connector.`);
       keyFindings.push(`Insufficient Evidence: Missing telemetry across all sensors. Under-specified input signature produced fully generated mock fallbacks.`);
       keyFindings.push(`AI Assessment: Highly cautious. Exercise maximum surveillance. No active threat or legitimate domain records confirmed for target "${term}".`);
+
+      findings.push({
+        statement: "No verified public indicators or infrastructure registration found in any connector.",
+        type: "AI Assessment",
+        evidenceIds: []
+      });
+      findings.push({
+        statement: "Missing telemetry across all sensors. Under-specified input signature produced fully generated mock fallbacks.",
+        type: "AI Assessment",
+        evidenceIds: []
+      });
+      findings.push({
+        statement: `Highly cautious. Exercise maximum surveillance. No active threat or legitimate domain records confirmed for target "${term}".`,
+        type: "AI Assessment",
+        evidenceIds: []
+      });
     } else {
       const activeDetails = `Detected ${entityCount} entities and ${relationshipCount} connections across active sensors (${activeSensorsList.join(", ")}).`;
       keyFindings.push(`Verified Findings: ${activeDetails}`);
 
+      const evidenceIds = result.evidences.map(e => e.id).filter(Boolean) as string[];
+
+      findings.push({
+        statement: `Detected ${entityCount} entities and ${relationshipCount} connections across active sensors (${activeSensorsList.join(", ")}).`,
+        type: "Verified Finding",
+        evidenceIds: evidenceIds
+      });
+
       if (missingSensorsList.length > 0) {
         keyFindings.push(`Insufficient Evidence: No information was returned from inactive sensors: ${missingSensorsList.join(", ")}.`);
+        findings.push({
+          statement: `No information was returned from inactive sensors: ${missingSensorsList.join(", ")}.`,
+          type: "AI Assessment",
+          evidenceIds: []
+        });
       } else {
         keyFindings.push(`Insufficient Evidence: All sensors returned some telemetry, but micro-records are sparse for deep sub-domain verification.`);
+        findings.push({
+          statement: "All sensors returned some telemetry, but micro-records are sparse for deep sub-domain verification.",
+          type: "AI Assessment",
+          evidenceIds: []
+        });
       }
 
       keyFindings.push(`AI Assessment: The active digital footprint indicates standard public existence with moderate exposure. Cross-sensor mapping resolved valid node configurations.`);
+      findings.push({
+        statement: "The active digital footprint indicates standard public existence with moderate exposure. Cross-sensor mapping resolved valid node configurations.",
+        type: "Verified Finding",
+        evidenceIds: evidenceIds
+      });
     }
 
     // Synthesize actionable recommendations
@@ -242,6 +299,7 @@ export class IntelligenceService {
         : `Consolidated intelligence scan on "${term}" mapped ${entityCount} entities with a calculated risk index of ${baseRisk}%.`,
       executiveSummary: execSummary,
       keyFindings: keyFindings,
+      findings: findings,
       riskScore: baseRisk,
       confidence: refinedConfidence,
       recommendations,
