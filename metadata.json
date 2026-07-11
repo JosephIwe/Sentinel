@@ -1,0 +1,6 @@
+{
+  "name": "Sentinel API",
+  "description": "API-first AI intelligence platform transforming public information into structured intelligence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
