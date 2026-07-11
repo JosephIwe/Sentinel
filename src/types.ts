@@ -49,6 +49,20 @@ export interface ApiMetrics {
 
 // --- Investigation Engine Types ---
 
+export interface InvestigationQuery {
+  term: string;
+  type?: "Domain" | "Organization" | "Person" | "IPAddress" | "Generic";
+  options?: Record<string, any>;
+}
+
+export interface Evidence {
+  id: string;
+  source: string; // e.g. "WHOIS Database", "Google Search indexer"
+  strength: number; // 0.0 to 1.0 (relevance/certainty multiplier)
+  description: string;
+  url?: string;
+}
+
 export interface Entity {
   id: string;
   name: string;
@@ -77,6 +91,7 @@ export interface ConnectorResult {
   entities: Entity[];
   relationships: Relationship[];
   timeline: TimelineEvent[];
+  evidences: Evidence[];
   sources: string[];
   error?: string;
   rawData?: any;
@@ -84,15 +99,16 @@ export interface ConnectorResult {
 
 export interface Connector {
   name: string;
-  run(query: string): Promise<ConnectorResult>;
+  run(query: InvestigationQuery): Promise<ConnectorResult>;
 }
 
 export interface InvestigationResult {
-  query: string;
+  query: InvestigationQuery;
   summary: string;
   entities: Entity[];
   relationships: Relationship[];
   timeline: TimelineEvent[];
+  evidences: Evidence[];
   confidence: number; // 0.0 to 1.0 (or percentage)
   sources: string[];
 }

@@ -1,4 +1,4 @@
-import { Connector, ConnectorResult, Entity, Relationship, TimelineEvent } from "../types";
+import { Connector, ConnectorResult, Entity, Relationship, TimelineEvent, Evidence, InvestigationQuery } from "../types";
 
 /**
  * Google Search Intelligence Connector
@@ -9,19 +9,20 @@ import { Connector, ConnectorResult, Entity, Relationship, TimelineEvent } from 
 export class GoogleConnector implements Connector {
   public name = "Google Search Indexer";
 
-  public async run(query: string): Promise<ConnectorResult> {
+  public async run(query: InvestigationQuery): Promise<ConnectorResult> {
     const timestamp = new Date().toISOString();
-    const queryLower = query.toLowerCase();
+    const searchTerm = query.term;
+    const queryLower = searchTerm.toLowerCase();
 
     const entities: Entity[] = [];
     const relationships: Relationship[] = [];
     const timeline: TimelineEvent[] = [];
+    const evidences: Evidence[] = [];
     const sources: string[] = [];
 
     // Synthesize structured entities and relations based on the query pattern
-    if (queryLower.includes(".") || queryLower.includes("://")) {
-      // Looks like a domain or website query
-      const domain = query.replace(/(^\w+:|^)\/\//, "").split("/")[0];
+    if (queryLower.includes(".") || queryLower.includes("://") || query.type === "Domain") {
+      const domain = searchTerm.replace(/(^\w+:|^)\/\//, "").split("/")[0];
       
       entities.push({
         id: "ent_org_domain",
@@ -58,14 +59,21 @@ export class GoogleConnector implements Connector {
         source: "Google Search Console"
       });
 
+      evidences.push({
+        id: "ev_google_site_crawl",
+        source: "Google Search Console",
+        strength: 0.9,
+        description: `Verified high-density crawl signature for ${domain} with 14,200 indexed entrypoints.`,
+        url: `https://www.google.com/search?q=site%3A${domain}`
+      });
+
       sources.push(`https://www.google.com/search?q=site%3A${domain}`);
       sources.push(`https://webcache.googleusercontent.com/search?q=cache:${domain}`);
     } else {
-      // Looks like a person or organization query
       entities.push({
         id: "ent_query_subject",
-        name: query,
-        type: queryLower.includes("corp") || queryLower.includes("inc") || queryLower.includes("llc") ? "Organization" : "Person",
+        name: searchTerm,
+        type: query.type || (queryLower.includes("corp") || queryLower.includes("inc") || queryLower.includes("llc") ? "Organization" : "Person"),
         metadata: {
           category: "Target Node",
           searchVolume: "2.4k/mo",
@@ -77,7 +85,7 @@ export class GoogleConnector implements Connector {
         name: "LinkedIn Profile Node",
         type: "Keyword",
         metadata: {
-          url: `https://www.linkedin.com/in/${encodeURIComponent(query.replace(/\s+/g, ""))}`
+          url: `https://www.linkedin.com/in/${encodeURIComponent(searchTerm.replace(/\s+/g, ""))}`
         }
       });
 
@@ -91,11 +99,19 @@ export class GoogleConnector implements Connector {
       timeline.push({
         date: "2025-11-01",
         event: "Social Graph Association",
-        description: `Discovered key citation indexing linking ${query} directly with global industry nodes.`,
+        description: `Discovered key citation indexing linking ${searchTerm} directly with global industry nodes.`,
         source: "Google Knowledge Graph"
       });
 
-      sources.push(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
+      evidences.push({
+        id: "ev_google_knowledge_graph",
+        source: "Google Knowledge Graph API",
+        strength: 0.85,
+        description: `Discovered persistent brand entity association for "${searchTerm}".`,
+        url: `https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`
+      });
+
+      sources.push(`https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`);
     }
 
     return {
@@ -105,6 +121,7 @@ export class GoogleConnector implements Connector {
       entities,
       relationships,
       timeline,
+      evidences,
       sources,
       rawData: {
         totalResults: 45200,

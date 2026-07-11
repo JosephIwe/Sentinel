@@ -1,4 +1,4 @@
-import { Connector, ConnectorResult, Entity, Relationship, TimelineEvent } from "../types";
+import { Connector, ConnectorResult, Entity, Relationship, TimelineEvent, Evidence, InvestigationQuery } from "../types";
 
 /**
  * DNS Infrastructure Name Service Connector
@@ -9,17 +9,19 @@ import { Connector, ConnectorResult, Entity, Relationship, TimelineEvent } from 
 export class DnsConnector implements Connector {
   public name = "Domain Name System Resolver";
 
-  public async run(query: string): Promise<ConnectorResult> {
+  public async run(query: InvestigationQuery): Promise<ConnectorResult> {
     const timestamp = new Date().toISOString();
-    const queryLower = query.toLowerCase();
+    const searchTerm = query.term;
+    const queryLower = searchTerm.toLowerCase();
 
     const entities: Entity[] = [];
     const relationships: Relationship[] = [];
     const timeline: TimelineEvent[] = [];
+    const evidences: Evidence[] = [];
     const sources: string[] = [];
 
-    const isDomain = queryLower.includes(".") && !queryLower.includes(" ");
-    const domain = isDomain ? query.replace(/(^\w+:|^)\/\//, "").split("/")[0] : "sentinel-gateway.net";
+    const isDomain = query.type === "Domain" || (queryLower.includes(".") && !queryLower.includes(" "));
+    const domain = isDomain ? searchTerm.replace(/(^\w+:|^)\/\//, "").split("/")[0] : "sentinel-gateway.net";
 
     // 1. Core target domain entity
     entities.push({
@@ -79,6 +81,22 @@ export class DnsConnector implements Connector {
       source: "DNS AXFR Sync log"
     });
 
+    evidences.push({
+      id: "ev_dns_a_record",
+      source: "Cloudflare Nameservers",
+      strength: 0.95,
+      description: `Discovered active A-record mapping ${domain} to secure server node ${simulatedIp}.`,
+      url: `https://dns.google/resolve?name=${domain}`
+    });
+
+    evidences.push({
+      id: "ev_dns_mx_record",
+      source: "Office 365 Routing",
+      strength: 0.85,
+      description: `Discovered corporate mail server alignment routing through Microsoft Office 365.`,
+      url: `https://dns.google/resolve?name=${domain}`
+    });
+
     sources.push(`dns:${domain}?type=ANY`);
     sources.push(`https://dns.google/resolve?name=${domain}`);
 
@@ -89,6 +107,7 @@ export class DnsConnector implements Connector {
       entities,
       relationships,
       timeline,
+      evidences,
       sources,
       rawData: {
         A: [simulatedIp],

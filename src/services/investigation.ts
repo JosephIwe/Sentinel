@@ -1,11 +1,11 @@
-import { Connector, InvestigationResult, Entity, Relationship, TimelineEvent } from "../types";
+import { Connector, InvestigationResult, Entity, Relationship, TimelineEvent, Evidence, InvestigationQuery, ConnectorResult } from "../types";
 
 /**
  * Enterprise Investigation Orchestrator Service
  * 
  * Implements Dependency Injection to easily register and manage connector providers.
  * Runs queries asynchronously in parallel, robustly isolates partial failures,
- * merges/normalizes overlapping entities, and synthesizes overall graph metadata.
+ * merges/normalizes overlapping entities, maps credentials, and synthesizes overall graph metadata.
  */
 export class InvestigationService {
   private connectors: Connector[];
@@ -25,9 +25,9 @@ export class InvestigationService {
    * Orchestrates high-throughput parallel checks across all registered providers,
    * aggregating, normalizing, and calculating final score dimensions.
    * 
-   * @param query - Target query input parameter (e.g. domain name, individual, corp)
+   * @param query - Structured query object containing search term and options
    */
-  public async investigate(query: string): Promise<InvestigationResult> {
+  public async investigate(query: InvestigationQuery): Promise<InvestigationResult> {
     const startTime = Date.now();
 
     // 1. Run all connectors in parallel using concurrent workers
@@ -45,19 +45,21 @@ export class InvestigationService {
           entities: [],
           relationships: [],
           timeline: [],
+          evidences: [],
           sources: [],
           error: err.message || "Execution failed",
-        };
+        } as ConnectorResult;
       }
     });
 
     const settledResults = await Promise.allSettled(runPromises);
 
     // Collect all elements from successful runs
-    let rawEntities: Entity[] = [];
-    let rawRelationships: Relationship[] = [];
-    let rawTimeline: TimelineEvent[] = [];
-    let rawSources: string[] = [];
+    const rawEntities: Entity[] = [];
+    const rawRelationships: Relationship[] = [];
+    const rawTimeline: TimelineEvent[] = [];
+    const rawEvidences: Evidence[] = [];
+    const rawSources: string[] = [];
     let successfulConnectorCount = 0;
 
     settledResults.forEach((result) => {
@@ -68,6 +70,7 @@ export class InvestigationService {
           rawEntities.push(...value.entities);
           rawRelationships.push(...value.relationships);
           rawTimeline.push(...value.timeline);
+          rawEvidences.push(...(value.evidences || []));
           rawSources.push(...value.sources);
         }
       }
@@ -88,7 +91,7 @@ export class InvestigationService {
         existing.metadata = {
           ...existing.metadata,
           ...ent.metadata,
-          mergedFrom: [...(existing.metadata.mergedFrom || []), ent.id]
+          mergedFrom: Array.from(new Set([...(existing.metadata.mergedFrom || []), ent.id]))
         };
         // Log translation from this duplicate entity ID to the canonical one
         idTranslationMap.set(ent.id, existing.id);
@@ -133,10 +136,20 @@ export class InvestigationService {
       )
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // 5. Deduplicate sources
+    // 5. Deduplicate evidences
+    const evidencesMap = new Map<string, Evidence>();
+    rawEvidences.forEach((ev) => {
+      const key = ev.id || `${ev.source}:${ev.description.substring(0, 30)}`;
+      if (!evidencesMap.has(key)) {
+        evidencesMap.set(key, ev);
+      }
+    });
+    const evidences = Array.from(evidencesMap.values());
+
+    // 6. Deduplicate sources
     const sources = Array.from(new Set(rawSources));
 
-    // 6. Calculate Confidence Score
+    // 7. Calculate Confidence Score
     // Confidence is an analytical result derived from signal cross-validation.
     // Higher volume of synchronized connectors, dense network maps, and verified domains boost confidence.
     const baseConfidence = (successfulConnectorCount / this.connectors.length) * 60;
@@ -144,9 +157,9 @@ export class InvestigationService {
     const connectionDensityBonus = Math.min(15, relationships.length * 2);
     const confidence = Math.min(100, Math.round(baseConfidence + entityDensityBonus + connectionDensityBonus));
 
-    // 7. Synthesize Summary
+    // 8. Synthesize Summary
     const durationMs = Date.now() - startTime;
-    const summary = `Investigation completed in ${durationMs}ms across ${successfulConnectorCount}/${this.connectors.length} active sensor feeds. Detected ${entities.length} primary entities linked by ${relationships.length} validated context paths. Target footprint exhibits a confidence score of ${confidence}% centered around ${query}.`;
+    const summary = `Investigation completed in ${durationMs}ms across ${successfulConnectorCount}/${this.connectors.length} active sensor feeds. Detected ${entities.length} primary entities linked by ${relationships.length} validated context paths. Target footprint exhibits a confidence score of ${confidence}% centered around "${query.term}".`;
 
     return {
       query,
@@ -154,6 +167,7 @@ export class InvestigationService {
       entities,
       relationships,
       timeline,
+      evidences,
       confidence,
       sources,
     };
