@@ -162,43 +162,86 @@ export class IntelligenceService {
     const relationshipCount = result.relationships.length;
     const evidenceCount = result.evidences.length;
 
+    // Identify active and missing sensors
+    const sensors = {
+      "WHOIS Registry Database": result.evidences.some(e => e.source.toLowerCase().includes("whois")),
+      "DNS Zone Resolver": result.evidences.some(e => e.source.toLowerCase().includes("dns")),
+      "GitHub Indexer": result.evidences.some(e => e.source.toLowerCase().includes("github")),
+      "Google Search Indexer": result.evidences.some(e => e.source.toLowerCase().includes("google") || e.source.toLowerCase().includes("search")),
+      "Global News & Media": result.evidences.some(e => e.source.toLowerCase().includes("news") || e.source.toLowerCase().includes("press") || e.source.toLowerCase().includes("media"))
+    };
+
+    const activeSensorsList = Object.entries(sensors)
+      .filter(([_, active]) => active)
+      .map(([name]) => name);
+
+    const missingSensorsList = Object.entries(sensors)
+      .filter(([_, active]) => !active)
+      .map(([name]) => name);
+
+    // Detect mock or empty status
+    const isMockOrEmpty = result.entities.length === 0 || 
+      result.evidences.length === 0 || 
+      result.evidences.every(e => e.id?.includes("fallback") || e.description.toLowerCase().includes("placeholder") || e.description.toLowerCase().includes("mock") || e.strength < 0.5) ||
+      result.confidence < 30;
+
     // Calculate structural metrics
-    const baseRisk = Math.min(90, Math.max(20, (entityCount * 7) + (relationshipCount * 4)));
+    const baseRisk = isMockOrEmpty ? 10 : Math.min(90, Math.max(20, (entityCount * 7) + (relationshipCount * 4)));
     const refinedConfidence = Math.min(100, Math.round(result.confidence));
 
-    // Synthesize key findings
-    const keyFindings: string[] = [
-      `Orchestration mapped a cluster of ${entityCount} distinct entities centered around "${term}".`,
-      `Identified ${relationshipCount} validated relational context paths tying infrastructure to target nodes.`,
-      `Aggregated ${evidenceCount} pieces of high-signal evidence confirming public index matches.`
-    ];
+    // Formulate structured keyFindings with strict categories
+    const keyFindings: string[] = [];
 
-    // Contextual additions to findings
-    const containsIP = result.entities.some(e => e.type === "IPAddress");
-    const containsDomain = result.entities.some(e => e.type === "Domain");
-    const containsGitHub = result.entities.some(e => e.name.toLowerCase().includes("github"));
+    if (isMockOrEmpty) {
+      keyFindings.push(`Verified Findings: No verified public indicators or infrastructure registration found in any connector.`);
+      keyFindings.push(`Insufficient Evidence: Missing telemetry across all sensors. Under-specified input signature produced fully generated mock fallbacks.`);
+      keyFindings.push(`AI Assessment: Highly cautious. Exercise maximum surveillance. No active threat or legitimate domain records confirmed for target "${term}".`);
+    } else {
+      const activeDetails = `Detected ${entityCount} entities and ${relationshipCount} connections across active sensors (${activeSensorsList.join(", ")}).`;
+      keyFindings.push(`Verified Findings: ${activeDetails}`);
 
-    if (containsIP) {
-      keyFindings.push(`Located active IPv4 resolution mapping direct infrastructure exposure.`);
-    }
-    if (containsDomain) {
-      keyFindings.push(`Detected corporate domain structures indicating active brand registration.`);
-    }
-    if (containsGitHub) {
-      keyFindings.push(`Mapped open-source repository contributions linking code history to developers.`);
+      if (missingSensorsList.length > 0) {
+        keyFindings.push(`Insufficient Evidence: No information was returned from inactive sensors: ${missingSensorsList.join(", ")}.`);
+      } else {
+        keyFindings.push(`Insufficient Evidence: All sensors returned some telemetry, but micro-records are sparse for deep sub-domain verification.`);
+      }
+
+      keyFindings.push(`AI Assessment: The active digital footprint indicates standard public existence with moderate exposure. Cross-sensor mapping resolved valid node configurations.`);
     }
 
     // Synthesize actionable recommendations
-    const recommendations: string[] = [
+    const recommendations: string[] = isMockOrEmpty ? [
+      `Initiate manual out-of-band domain verification.`,
+      `Establish passive sentinel monitors in case the signature registers active records.`,
+      `Refrain from sending confidential parameters to this unverified signature.`
+    ] : [
       `Deploy continuous passive DNS monitors to identify unauthorized zone edits immediately.`,
       `Perform a thorough security review of registered registrant contact records for "${term}".`,
       `Monitor open-source codebases linked to the target for secret leaks or vulnerable package dependencies.`
     ];
 
+    // Build the executiveSummary with the requested Confidence Score Explanation
+    let execSummary = "";
+    if (isMockOrEmpty) {
+      execSummary = `CAUTIOUS RECORD WARNING: No verified threat telemetry or public records exist for target "${term}" (${type}) in any system connector. No active domain registration or developer profiles were detected. All available connectors returned mock or empty fallbacks, indicating that this target possesses a non-existent or completely hidden internet exposure footprint.`;
+    } else {
+      execSummary = `This is a deterministic, automated intelligence report synthesized for "${term}" (${type}). Cross-sensor evaluation resolved ${entityCount} unique identity nodes linked via ${relationshipCount} contextual relationships based on data retrieved from ${activeSensorsList.join(", ")}.`;
+      if (missingSensorsList.length > 0) {
+        execSummary += ` No verified public evidence was found or returned from these connectors: ${missingSensorsList.join(", ")}.`;
+      }
+    }
+
+    // Append confidence explanation explicitly
+    const confidenceExplanation = `\n\nCONFIDENCE SCORE EXPLANATION: A confidence score of ${refinedConfidence}% was assigned because ${activeSensorsList.length} of ${Object.keys(sensors).length} global connectors successfully verified node telemetry. ${isMockOrEmpty ? "All inputs matched mock fallback thresholds, lowering confidence." : "Multiple independent sensors cross-corroborated target indicators, strengthening overall certainty."}`;
+    
+    execSummary += confidenceExplanation;
+
     return {
-      summary: `Consolidated intelligence scan on "${term}" mapped ${entityCount} entities with a calculated risk index of ${baseRisk}%.`,
-      executiveSummary: `This is a deterministic, automated intelligence report synthesized for "${term}" (${type}). Cross-sensor evaluation resolved ${entityCount} unique identity nodes linked via ${relationshipCount} contextual relationships. The digital footprint exhibits a refined confidence score of ${refinedConfidence}% backed by ${evidenceCount} sources of verification.`,
-      keyFindings: keyFindings.slice(0, 5),
+      summary: isMockOrEmpty 
+        ? `CAUTIOUS POSTURE: Target "${term}" has zero verified public presence or threat indicators.`
+        : `Consolidated intelligence scan on "${term}" mapped ${entityCount} entities with a calculated risk index of ${baseRisk}%.`,
+      executiveSummary: execSummary,
+      keyFindings: keyFindings,
       riskScore: baseRisk,
       confidence: refinedConfidence,
       recommendations,

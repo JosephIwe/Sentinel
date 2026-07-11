@@ -1,5 +1,5 @@
 import React from "react";
-import { Shield, LayoutDashboard, Terminal, Key, BookOpen, LogOut, User as UserIcon, LogIn, Cpu } from "lucide-react";
+import { Shield, LayoutDashboard, Terminal, Key, BookOpen, LogOut, User as UserIcon, LogIn, Cpu, History } from "lucide-react";
 import { User } from "../types";
 
 interface LayoutProps {
@@ -69,6 +69,18 @@ export default function Layout({
             >
               <Terminal className="w-3.5 h-3.5" />
               <span>API Playground</span>
+            </button>
+            <button
+              onClick={() => setCurrentPage("history")}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-150 flex items-center space-x-1.5 ${
+                currentPage === "history"
+                  ? "bg-gray-800/80 text-white border border-gray-700/60"
+                  : "text-gray-400 hover:text-white hover:bg-gray-900/40"
+              }`}
+              id="nav-btn-history"
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>History</span>
             </button>
             <button
               onClick={() => setCurrentPage("docs")}

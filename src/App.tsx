@@ -5,6 +5,7 @@ import AuthView from "./components/AuthView";
 import DashboardView from "./components/DashboardView";
 import DocsView from "./components/DocsView";
 import PlaygroundView from "./components/PlaygroundView";
+import HistoryView from "./components/HistoryView";
 import { User, ApiKey, ExtractionJob, ApiMetrics } from "./types";
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [extractionJobs, setExtractionJobs] = useState<ExtractionJob[]>([]);
   const [metrics, setMetrics] = useState<ApiMetrics | null>(null);
+  const [selectedHistory, setSelectedHistory] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Initialize and pull current developer context
@@ -213,7 +215,19 @@ export default function App() {
       )}
       {currentPage === "docs" && <DocsView />}
       {currentPage === "playground" && (
-        <PlaygroundView onAddJob={handleAddJob} />
+        <PlaygroundView 
+          onAddJob={handleAddJob} 
+          initialResult={selectedHistory}
+          onClearInitialResult={() => setSelectedHistory(null)}
+        />
+      )}
+      {currentPage === "history" && (
+        <HistoryView 
+          onSelectHistory={(record) => {
+            setSelectedHistory(record);
+            setCurrentPage("playground");
+          }} 
+        />
       )}
     </Layout>
   );

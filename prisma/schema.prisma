@@ -93,19 +93,16 @@ model ApiUsage {
 }
 
 model Investigation {
-  id               String    @id @default(cuid())
-  userId           String
-  targetUrl        String?
-  rawText          String?
-  schemaType       String
-  schemaDefinition String    // JSON string definition
-  status           String    @default("pending") // "pending" | "processing" | "completed" | "failed"
-  resultPayload    String?   // JSON result payload string
-  durationMs       Int?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id         String   @id @default(cuid())
+  userId     String
+  type       String   // "domain" | "email" | "company" | "username"
+  query      String   // the search target input
+  summary    String   // synthesized summary of the investigation
+  confidence Int      // intelligence confidence score
+  resultJson String   // stringified JSON payload of the entire result
+  createdAt  DateTime @default(now())
 
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("investigations")
 }

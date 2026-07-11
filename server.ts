@@ -10,6 +10,7 @@ import { NewsConnector } from "./src/connectors/news";
 import { GithubConnector } from "./src/connectors/github";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
+import { validateInvestigationInput } from "./utils/validation";
 
 dotenv.config();
 
@@ -394,20 +395,84 @@ const investigationService = new InvestigationService([
   githubConnector,
 ]);
 
-// Endpoint to run parallel multi-source investigation
+// Map incoming API target types to our internal query-engine categories
+function mapTypeToQueryType(type: string): "Domain" | "Organization" | "Person" | "IPAddress" | "Generic" {
+  const normalized = type.trim().toLowerCase();
+  switch (normalized) {
+    case "domain":
+      return "Domain";
+    case "company":
+      return "Organization";
+    case "email":
+      return "Person";
+    case "username":
+      return "Person";
+    default:
+      return "Generic";
+  }
+}
+
+// Unified Endpoint to run parallel multi-source investigation and synthesize strategic intelligence reports
 app.post("/api/investigate", async (req, res) => {
+  // Check if we are running the new unified API workflow (which uses 'value')
+  if (req.body && (req.body.value !== undefined || (req.body.type !== undefined && !req.body.term))) {
+    // 1. Validate incoming input payloads using our reusable validation module
+    const validation = validateInvestigationInput(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.message });
+    }
+
+    const { type, value } = req.body;
+
+    try {
+      // 2. Map input target parameters to correct query category shapes
+      const query = {
+        term: value.trim(),
+        type: mapTypeToQueryType(type),
+      };
+
+      // 3. Trigger multi-connector parallel infrastructure scan
+      const investigationResult = await investigationService.investigate(query);
+
+      // 4. Feed resolved identity footprint and relationships to the AI intelligence engine
+      const aiClient = getAiClient();
+      const intelligenceService = new IntelligenceService(aiClient);
+      const intelligenceReport = await intelligenceService.analyze(investigationResult);
+
+      // 5. Structure and respond with the unified analytical schema report conforming to the requested schema
+      return res.status(200).json({
+        summary: intelligenceReport.summary,
+        executiveSummary: intelligenceReport.executiveSummary,
+        entities: investigationResult.entities,
+        relationships: investigationResult.relationships,
+        timeline: intelligenceReport.timeline,
+        confidence: intelligenceReport.confidence,
+        recommendations: intelligenceReport.recommendations,
+        sources: investigationResult.sources,
+      });
+
+    } catch (err: any) {
+      console.error("Unified threat intelligence execution pipeline failure:", err);
+      return res.status(500).json({
+        error: "An internal orchestration error occurred while running the intelligence service.",
+        details: err.message,
+      });
+    }
+  }
+
+  // Backwards-compatible fallback path for the multi-step interactive developer playground UI
   const { term, type } = req.body;
   if (!term) {
-    return res.status(400).json({ error: "Search term is required for investigation" });
+    return res.status(400).json({ error: "Search term ('term' or 'value') is required for investigation" });
   }
 
   try {
     const query = { term, type: type || "Generic" };
     const result = await investigationService.investigate(query);
-    res.json(result);
+    return res.status(200).json(result);
   } catch (err: any) {
-    console.error("Investigation orchestration failure:", err);
-    res.status(500).json({ error: "Failed to run investigation", details: err.message });
+    console.error("Sandbox investigation orchestration failure:", err);
+    return res.status(500).json({ error: "Failed to run sandbox investigation", details: err.message });
   }
 });
 
