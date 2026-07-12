@@ -1,4 +1,7 @@
 import { Connector, InvestigationResult, Entity, Relationship, TimelineEvent, Evidence, InvestigationQuery, ConnectorResult } from "../types";
+import { EntityResolutionService } from "./entityResolution";
+import { withRetry, withTimeout, CircuitBreakerRegistry } from "../utils/reliability";
+import { logger } from "../utils/logger";
 
 /**
  * Enterprise Investigation Orchestrator Service
@@ -33,11 +36,39 @@ export class InvestigationService {
     // 1. Run all connectors in parallel using concurrent workers
     // We use Promise.allSettled to ensure that a complete failure in one connector
     // (e.g., WHOIS server downtime) does not crash the entire investigation.
+    // Each connector is hardened with: timeout, retries, circuit breaker, and performance latency profiling.
     const runPromises = this.connectors.map(async (connector) => {
+      const breaker = CircuitBreakerRegistry.getBreaker(connector.name, 3, 15000);
+      
+      const executeWithResilience = async () => {
+        return await breaker.execute(async () => {
+          return await withTimeout(
+            withRetry(
+              async () => {
+                return await connector.run(query);
+              },
+              { maxRetries: 2, delayMs: 400, name: connector.name }
+            ),
+            6000,
+            connector.name
+          );
+        });
+      };
+
       try {
-        return await connector.run(query);
+        return await logger.profile(
+          `Connector:${connector.name}`,
+          executeWithResilience,
+          3000,
+          { query }
+        );
       } catch (err: any) {
-        console.error(`Connector failure [${connector.name}]:`, err);
+        logger.error(`Connector failed resiliently [${connector.name}]: ${err.message}`, {
+          connector: connector.name,
+          error: err.message,
+          query
+        });
+        
         return {
           connectorName: connector.name,
           success: false,
@@ -45,7 +76,17 @@ export class InvestigationService {
           entities: [],
           relationships: [],
           timeline: [],
-          evidences: [],
+          evidences: [
+            {
+              id: `ev_${connector.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_failure`,
+              connector: connector.name,
+              title: `${connector.name} Failure Fallback`,
+              description: `The ${connector.name} connector failed resiliently: ${err.message}. Returning graceful fallback.`,
+              confidence: 0,
+              timestamp: new Date().toISOString(),
+              rawData: { error: err.message }
+            }
+          ],
           sources: [],
           error: err.message || "Execution failed",
         } as ConnectorResult;
@@ -72,6 +113,9 @@ export class InvestigationService {
           rawTimeline.push(...value.timeline);
           rawEvidences.push(...(value.evidences || []));
           rawSources.push(...value.sources);
+        } else {
+          // Aggregate fallback evidences for partially failing or circuit-broken connectors
+          rawEvidences.push(...(value.evidences || []));
         }
       }
     });
@@ -168,6 +212,10 @@ export class InvestigationService {
     const durationMs = Date.now() - startTime;
     const summary = `Investigation completed in ${durationMs}ms across ${successfulConnectorCount}/${this.connectors.length} active sensor feeds. Detected ${entities.length} primary entities linked by ${relationships.length} validated context paths. Target footprint exhibits a confidence score of ${confidence}% centered around "${query.term}".`;
 
+    // 9. Run Entity Resolution Engine
+    const entityResolutionService = new EntityResolutionService();
+    const canonicalEntities = entityResolutionService.resolve(entities, evidences, relationships);
+
     return {
       query,
       summary,
@@ -177,6 +225,7 @@ export class InvestigationService {
       evidences,
       confidence,
       sources,
+      canonicalEntities,
     };
   }
 }

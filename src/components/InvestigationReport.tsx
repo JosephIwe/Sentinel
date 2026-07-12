@@ -45,13 +45,43 @@ interface Evidence {
   rawData: any;
 }
 
+interface RuleEvaluation {
+  id: string;
+  name: string;
+  points: number;
+  appliedPoints: number;
+  explanation: string;
+  matched: boolean;
+  reason?: string;
+}
+
+interface ScoreBreakdown {
+  score: number;
+  baseScore: number;
+  evaluations: RuleEvaluation[];
+}
+
+interface CanonicalEntity {
+  id: string;
+  canonicalName: string;
+  aliases: string[];
+  entityType: string;
+  confidence: number;
+  evidence: Evidence[];
+  relationships: any[];
+}
+
 interface InvestigationApiResponse {
   summary: string;
   executiveSummary: string;
   entities: EntityNode[];
   relationships: RelationshipEdge[];
+  canonicalEntities?: CanonicalEntity[];
   timeline: TimelineEvent[];
   confidence: number;
+  riskScore?: number;
+  confidenceBreakdown?: ScoreBreakdown;
+  riskBreakdown?: ScoreBreakdown;
   recommendations: string[];
   sources: string[];
   evidences?: Evidence[];
@@ -143,30 +173,38 @@ export default function InvestigationReport({ response, targetType, targetQuery 
 
   // Dynamic deterministic risk calculation based on keywords and metadata signals
   const calculateRiskDetails = () => {
-    let score = 35; // Default moderate baseline
+    let score = response.riskScore !== undefined ? response.riskScore : 35;
     const textToAnalyze = `${response.summary} ${response.executiveSummary} ${response.recommendations?.join(" ")}`.toLowerCase();
     
     const factors: string[] = [];
 
-    if (textToAnalyze.includes("vulnerability") || textToAnalyze.includes("vulnerable")) {
-      score += 15;
-      factors.push("Unresolved system exposure or vulnerability mentioned in security indexes.");
-    }
-    if (textToAnalyze.includes("compromise") || textToAnalyze.includes("breach") || textToAnalyze.includes("leak")) {
-      score += 20;
-      factors.push("Indicators of historic credentials leak or account exposure detected.");
-    }
-    if (textToAnalyze.includes("unauthorized") || textToAnalyze.includes("unsecured")) {
-      score += 12;
-      factors.push("Potentially misconfigured asset endpoints detected during zone crawl.");
-    }
-    if (textToAnalyze.includes("github") || textToAnalyze.includes("repository")) {
-      score += 8;
-      factors.push("Public source code repository activity correlated with asset query.");
-    }
-    if (response.entities && response.entities.length > 5) {
-      score += 10;
-      factors.push("Broad infrastructural surface area detected with multiple nodes.");
+    if (response.riskBreakdown && response.riskBreakdown.evaluations) {
+      response.riskBreakdown.evaluations.forEach(ev => {
+        if (ev.matched) {
+          factors.push(`${ev.name}: ${ev.reason || ev.explanation} (${ev.appliedPoints > 0 ? "+" : ""}${ev.appliedPoints} pts)`);
+        }
+      });
+    } else {
+      if (textToAnalyze.includes("vulnerability") || textToAnalyze.includes("vulnerable")) {
+        score += 15;
+        factors.push("Unresolved system exposure or vulnerability mentioned in security indexes.");
+      }
+      if (textToAnalyze.includes("compromise") || textToAnalyze.includes("breach") || textToAnalyze.includes("leak")) {
+        score += 20;
+        factors.push("Indicators of historic credentials leak or account exposure detected.");
+      }
+      if (textToAnalyze.includes("unauthorized") || textToAnalyze.includes("unsecured")) {
+        score += 12;
+        factors.push("Potentially misconfigured asset endpoints detected during zone crawl.");
+      }
+      if (textToAnalyze.includes("github") || textToAnalyze.includes("repository")) {
+        score += 8;
+        factors.push("Public source code repository activity correlated with asset query.");
+      }
+      if (response.entities && response.entities.length > 5) {
+        score += 10;
+        factors.push("Broad infrastructural surface area detected with multiple nodes.");
+      }
     }
 
     // Default factors if none found
@@ -175,8 +213,10 @@ export default function InvestigationReport({ response, targetType, targetQuery 
       factors.push("Baseline cryptographic asset verification completed successfully.");
     }
 
-    // Cap risk score between 12 and 96
-    score = Math.max(12, Math.min(96, score));
+    // Cap risk score between 12 and 96 if calculated client-side
+    if (response.riskScore === undefined) {
+      score = Math.max(12, Math.min(96, score));
+    }
 
     // Determine Classification
     let level = "LOW";
@@ -426,6 +466,53 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                 </div>
               </div>
 
+              {/* Rule-by-Rule Scoring Breakdown */}
+              {response.riskBreakdown && response.riskBreakdown.evaluations && (
+                <div className="space-y-2.5 pt-3 border-t border-neutral-900/60 print:border-neutral-200">
+                  <span className="text-[10px] font-mono font-bold text-neutral-400 print:text-neutral-600 block uppercase">
+                    Deterministic Risk Breakdown:
+                  </span>
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                    {response.riskBreakdown.evaluations.map((ev) => (
+                      <div 
+                        key={ev.id} 
+                        className={`p-2.5 rounded border text-[11px] leading-relaxed transition-all ${
+                          ev.matched 
+                            ? "bg-red-950/20 border-red-900/40 text-neutral-300 print:bg-red-50/50 print:border-red-200 print:text-neutral-800" 
+                            : "bg-neutral-900/20 border-neutral-800/40 text-neutral-400 opacity-60 print:bg-white print:border-neutral-100 print:text-neutral-500"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className={`font-medium ${ev.matched ? "text-white print:text-black font-semibold" : "text-neutral-400"}`}>
+                            {ev.name}
+                          </span>
+                          <span className={`font-mono font-bold text-[10px] shrink-0 px-1.5 py-0.5 rounded ${
+                            ev.matched 
+                              ? ev.points > 0 
+                                ? "text-red-400 bg-red-950/60 border border-red-900/40 print:text-red-700 print:bg-red-50" 
+                                : "text-emerald-400 bg-emerald-950/60 border border-emerald-900/40 print:text-emerald-700 print:bg-emerald-50" 
+                              : "text-neutral-500 bg-neutral-950 border border-neutral-850 print:bg-neutral-50"
+                          }`}>
+                            {ev.matched 
+                              ? `${ev.points > 0 ? "+" : ""}${ev.points} pts` 
+                              : `${ev.points > 0 ? "+" : ""}${ev.points} pts (N/A)`
+                            }
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 print:text-neutral-600 mt-1 font-light">
+                          {ev.explanation}
+                        </p>
+                        {ev.matched && ev.reason && (
+                          <p className="text-[10px] text-amber-400/90 print:text-amber-800 mt-1 font-mono font-medium">
+                            ↳ Matched: {ev.reason}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Critical Risk Contributing Factors */}
               <div className="space-y-2 pt-2 border-t border-neutral-900/60 print:border-neutral-200">
                 <span className="text-[10px] font-mono font-bold text-neutral-400 print:text-neutral-600 block uppercase">
@@ -482,6 +569,53 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                   <span>Fully Cross-Referenced</span>
                 </div>
               </div>
+
+              {/* Rule-by-Rule Scoring Breakdown */}
+              {response.confidenceBreakdown && response.confidenceBreakdown.evaluations && (
+                <div className="space-y-2.5 pt-3 border-t border-neutral-900/60 print:border-neutral-200">
+                  <span className="text-[10px] font-mono font-bold text-neutral-400 print:text-neutral-600 block uppercase">
+                    Deterministic Confidence Breakdown:
+                  </span>
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                    {response.confidenceBreakdown.evaluations.map((ev) => (
+                      <div 
+                        key={ev.id} 
+                        className={`p-2.5 rounded border text-[11px] leading-relaxed transition-all ${
+                          ev.matched 
+                            ? "bg-blue-950/20 border-blue-900/40 text-neutral-300 print:bg-blue-50/50 print:border-blue-200 print:text-neutral-800" 
+                            : "bg-neutral-900/20 border-neutral-800/40 text-neutral-400 opacity-60 print:bg-white print:border-neutral-100 print:text-neutral-500"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className={`font-medium ${ev.matched ? "text-white print:text-black font-semibold" : "text-neutral-400"}`}>
+                            {ev.name}
+                          </span>
+                          <span className={`font-mono font-bold text-[10px] shrink-0 px-1.5 py-0.5 rounded ${
+                            ev.matched 
+                              ? ev.points > 0 
+                                ? "text-emerald-400 bg-emerald-950/60 border border-emerald-900/40 print:text-emerald-700 print:bg-emerald-50" 
+                                : "text-red-400 bg-red-950/60 border border-red-900/40 print:text-red-700 print:bg-red-50" 
+                              : "text-neutral-500 bg-neutral-950 border border-neutral-850 print:bg-neutral-50"
+                          }`}>
+                            {ev.matched 
+                              ? `${ev.points > 0 ? "+" : ""}${ev.points} pts` 
+                              : `${ev.points > 0 ? "+" : ""}${ev.points} pts (N/A)`
+                            }
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 print:text-neutral-600 mt-1 font-light">
+                          {ev.explanation}
+                        </p>
+                        {ev.matched && ev.reason && (
+                          <p className="text-[10px] text-blue-400/90 print:text-blue-800 mt-1 font-mono font-medium">
+                            ↳ Matched: {ev.reason}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Integrity summary */}
               <div className="text-[10px] font-light text-neutral-500 leading-relaxed border-t border-neutral-900/60 print:border-neutral-200 pt-3">
@@ -581,6 +715,165 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                 </div>
               ) : (
                 <p className="text-xs text-neutral-500 font-mono py-4 italic text-center">No active asset entities mapped.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Canonical Entity Resolution Footprint */}
+          <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="canonical-entity-resolution-section">
+            <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
+              <div className="flex items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
+                <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 print:text-emerald-700" />
+                  <span>4b. Resolved Identity Footprint (Canonical Entity Resolution)</span>
+                </h3>
+                <span className="text-[10px] font-mono text-emerald-400">
+                  RESOLVED: {response.canonicalEntities?.length || 0}
+                </span>
+              </div>
+
+              <p className="text-xs text-neutral-400 print:text-neutral-700 font-light leading-relaxed">
+                The Entity Resolution Engine executes deterministic matching rules (including case-insensitive normalization, punctuation stripping, domain canonicalization, and GitHub organization mapping) to merge duplicate entity nodes, compile alias chains, and unify associated evidence and relationships.
+              </p>
+
+              {response.canonicalEntities && response.canonicalEntities.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {response.canonicalEntities.map((canonical) => (
+                    <div 
+                      key={canonical.id}
+                      className="bg-neutral-900/40 border border-neutral-850 print:bg-white print:border-neutral-300 p-5 rounded-lg hover:border-neutral-700 transition-all relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+                      
+                      {/* Name & Type Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-850/60 print:border-neutral-200">
+                        <div className="flex items-center space-x-2.5">
+                          <div className="p-1.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 print:bg-emerald-50 print:border-emerald-200 print:text-emerald-800">
+                            <ShieldCheck className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-white print:text-black select-all">
+                              {canonical.canonicalName}
+                            </h4>
+                            <div className="text-[10px] text-neutral-500 font-mono mt-0.5 uppercase">
+                              Canonical ID: {canonical.id}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <span className="text-[9px] font-mono uppercase font-bold px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-neutral-400 print:bg-neutral-100 print:border-neutral-300 print:text-neutral-600 rounded-md">
+                            {canonical.entityType}
+                          </span>
+                          <span className="text-[9px] font-mono font-bold px-2 py-0.5 bg-emerald-950/40 border border-emerald-900/30 text-emerald-400 print:bg-emerald-50 print:border-emerald-200 print:text-emerald-800 rounded-md">
+                            Confidence: {canonical.confidence}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Content Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-4">
+                        
+                        {/* Aliases Column */}
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-mono font-bold text-neutral-400 print:text-neutral-600 uppercase tracking-wider block">
+                            Aliases & Alternative Names
+                          </span>
+                          {canonical.aliases && canonical.aliases.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {canonical.aliases.map((alias, idx) => (
+                                <span 
+                                  key={idx} 
+                                  className="text-[10px] font-mono px-2 py-0.5 bg-neutral-950/60 border border-neutral-850 text-neutral-300 print:bg-neutral-50 print:border-neutral-250 print:text-neutral-700 rounded select-all"
+                                >
+                                  {alias}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-neutral-500 italic font-light">No alternative aliases recorded.</p>
+                          )}
+                        </div>
+
+                        {/* Evidence Column */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-neutral-400 print:text-neutral-600 uppercase tracking-wider block">
+                              Associated Evidence
+                            </span>
+                            <span className="text-[10px] font-mono text-neutral-500 bg-neutral-950 px-1.5 py-0.2 rounded print:bg-neutral-100">
+                              Count: {canonical.evidence?.length || 0}
+                            </span>
+                          </div>
+                          {canonical.evidence && canonical.evidence.length > 0 ? (
+                            <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                              {canonical.evidence.map((ev) => (
+                                <div 
+                                  key={ev.id} 
+                                  className="p-2 rounded bg-neutral-950/30 border border-neutral-900 print:bg-neutral-50 print:border-neutral-200 text-[10.5px] leading-relaxed text-neutral-400 print:text-neutral-700"
+                                >
+                                  <div className="font-medium text-neutral-300 print:text-neutral-900 truncate">
+                                    {ev.title}
+                                  </div>
+                                  <div className="text-[9px] text-neutral-500 font-mono mt-0.5">
+                                    Source: {ev.connector}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-neutral-500 italic font-light">No direct evidence items linked.</p>
+                          )}
+                        </div>
+
+                        {/* Connected Relationships Column */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-neutral-400 print:text-neutral-600 uppercase tracking-wider block">
+                              Connected Relationships
+                            </span>
+                            <span className="text-[10px] font-mono text-neutral-500 bg-neutral-950 px-1.5 py-0.2 rounded print:bg-neutral-100">
+                              Count: {canonical.relationships?.length || 0}
+                            </span>
+                          </div>
+                          {canonical.relationships && canonical.relationships.length > 0 ? (
+                            <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                              {canonical.relationships.map((rel, idx) => {
+                                const isSource = rel.source === canonical.canonicalName;
+                                const otherParty = isSource ? rel.target : rel.source;
+                                const direction = isSource ? "Outgoing" : "Incoming";
+
+                                return (
+                                  <div 
+                                    key={idx} 
+                                    className="p-2 rounded bg-neutral-950/30 border border-neutral-900 print:bg-neutral-50 print:border-neutral-200 text-[10.5px] leading-relaxed"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-mono text-[9px] text-neutral-400 bg-neutral-900 px-1 rounded uppercase tracking-wider">
+                                        {rel.type}
+                                      </span>
+                                      <span className="text-[8px] font-mono text-neutral-500">
+                                        {direction}
+                                      </span>
+                                    </div>
+                                    <p className="text-neutral-300 print:text-neutral-800 font-sans mt-1 text-[11px] truncate select-all" title={otherParty}>
+                                      {isSource ? "→ " : "← "} {otherParty}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-neutral-500 italic font-light">No active relationships mapped.</p>
+                          )}
+                        </div>
+
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-500 font-mono py-4 italic text-center">No canonical entities resolved.</p>
               )}
             </div>
           </div>

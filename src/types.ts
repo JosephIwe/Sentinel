@@ -109,6 +109,16 @@ export interface Connector {
   run(query: InvestigationQuery): Promise<ConnectorResult>;
 }
 
+export interface CanonicalEntity {
+  id: string;
+  canonicalName: string;
+  aliases: string[];
+  entityType: string;
+  confidence: number;
+  evidence: Evidence[];
+  relationships: Relationship[];
+}
+
 export interface InvestigationResult {
   query: InvestigationQuery;
   summary: string;
@@ -118,6 +128,7 @@ export interface InvestigationResult {
   evidences: Evidence[];
   confidence: number; // 0.0 to 1.0 (or percentage)
   sources: string[];
+  canonicalEntities?: CanonicalEntity[];
 }
 
 export interface IntelligenceFinding {
@@ -135,4 +146,37 @@ export interface IntelligenceReport {
   confidence: number;
   recommendations: string[];
   timeline: TimelineEvent[];
+  confidenceBreakdown?: ScoreBreakdown;
+  riskBreakdown?: ScoreBreakdown;
 }
+
+export interface RuleEvaluation {
+  id: string;
+  name: string;
+  points: number;
+  appliedPoints: number;
+  explanation: string;
+  matched: boolean;
+  reason?: string;
+}
+
+export interface ScoreBreakdown {
+  score: number;
+  baseScore: number;
+  evaluations: RuleEvaluation[];
+}
+
+export interface InvestigationJob {
+  id: string;
+  userId: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  progress: number;
+  type: string;
+  query: string;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+  resultId?: string;
+  report?: any;
+}
+

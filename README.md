@@ -1,401 +1,104 @@
-# 🛡️ Sentinel API
+# Sentinel API Intelligence Platform - Production Hardening
 
-![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)
-![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?logo=prisma)
-![Google Gemini](https://img.shields.io/badge/Google-Gemini-4285F4?logo=google&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
+Sentinel is an enterprise-grade AI threat intelligence platform orchestrating parallel, multi-source investigation connectors alongside deep AI-assisted meta-analysis. 
 
-**Sentinel API** is an AI-powered OSINT (Open Source Intelligence) investigation platform that aggregates intelligence from multiple public data sources, performs automated investigations, and generates actionable reports using AI.
-
-Designed for security professionals, investigators, journalists, researchers, and developers, Sentinel API provides a unified interface for API key management, intelligence gathering, OSINT workflows, and AI-assisted analysis.
+This document details the production-hardening subsystem added to secure, stabilize, and monitor the Sentinel orchestrator under high-throughput workloads.
 
 ---
 
-# Table of Contents
+## 🛠️ Key Improvements & Architecture
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Project Structure](#project-structure)
-- [Roadmap](#roadmap)
-- [Getting Help](#getting-help)
-- [Contributing](#contributing)
-- [Maintainer](#maintainer)
-- [License](#license)
+### 1. Observability Subsystem
+- **Structured JSON Logging (`/src/utils/logger.ts`)**: Custom logger outputting standardized, machine-readable JSON fields (`timestamp`, `level`, `category`, `message`).
+- **Secret Masking & Sanitization**: Automask credentials and critical keys (`secret`, `authorization`, `x-api-key`) recursively in any context to prevent raw token leakages into metrics storage.
+- **Request ID Tracking**: Correlation UUIDs (`X-Request-ID`) attached to every API context and response header to trace complex asynchronous executions.
+- **Latency Profiling**: Custom timing wrappers that automatically log any request or connector taking longer than `1500ms` as `WARN` events.
+- **Health & Ready Probes**: 
+  - `GET /health`: Core container liveness probe reporting server uptime.
+  - `GET /ready`: System readiness check validating Gemini API connectivity.
+  - `GET /version`: Reports active application package meta-parameters.
 
----
+### 2. Reliability & Resilience
+- **Circuit Breaker state-machine (`/src/utils/reliability.ts`)**: Stateful breakers guarding each external connector. If failure thresholds are crossed, the breaker trips to `OPEN` to prevent network cascading, cool-down triggers, and then tests healing in `HALF_OPEN`.
+- **Exponential Backoff Retries**: Transient failures automatically trigger configurable retries with backoff delays, avoiding resource starvation.
+- **Promise Execution Timeout**: Active time-guards protecting the thread pool from unresponsive upstream server queries.
+- **Graceful Fallbacks**: If any connector experiences persistent failures, the engine generates an inline `Failure Fallback` evidence card and aggregates remaining successful connectors safely.
 
-# Overview
-
-Sentinel API simplifies open-source intelligence investigations by combining AI reasoning with multiple intelligence connectors.
-
-The platform enables users to:
-
-- Conduct AI-assisted investigations
-- Query multiple OSINT providers
-- Manage API credentials securely
-- Generate structured investigation reports
-- Explore historical investigations
-- Validate intelligence inputs
-- Build custom intelligence workflows
+### 3. Security Hardening
+- **Distributed Rate Limiting**: sliding-window tracking (by client IP or resolved API Key ID) to prevent Denial of Service (DoS) and API abuse.
+- **Robust Input Validation**: Strict validation schemas protecting database execution from cross-site scripting (XSS), script tags, and brackets.
+- **Environment Safety Checks**: Automated diagnostic audits on launch to warn of missing or misplaced secret declarations.
 
 ---
 
-# Features
+## 🔑 Environment Variables
 
-## 🔍 AI Investigation Engine
-
-Perform automated investigations powered by Google Gemini.
-
-Generate:
-
-- Executive summaries
-- Intelligence reports
-- Risk assessments
-- Investigation timelines
-- Key findings
-- Recommendations
-
----
-
-## 🌐 Multi-Source Intelligence Connectors
-
-Built-in integrations include:
-
-- Google Search
-- GitHub
-- DNS
-- WHOIS
-- News sources
-
-Additional providers can be added through the connector architecture.
-
----
-
-## 🔑 API Key Management
-
-Securely manage credentials for supported intelligence providers through the integrated dashboard.
-
----
-
-## 📚 Investigation History
-
-Track and revisit previous investigations from a centralized history view.
-
----
-
-## 🧪 Playground
-
-Experiment with prompts, intelligence queries, and AI workflows before running full investigations.
-
----
-
-## 📄 Documentation Center
-
-Built-in documentation helps developers configure and extend the platform.
-
----
-
-## 🔐 Authentication
-
-Integrated authentication powered by Better Auth for secure access control.
-
----
-
-## ⚡ Validation & Rate Limiting
-
-Includes request validation and rate limiting utilities to improve reliability and protect backend resources.
-
----
-
-# Architecture
-
-```text
-                 User
-                   │
-                   ▼
-          Sentinel Dashboard
-                   │
-      ┌────────────┼────────────┐
-      ▼            ▼            ▼
- Authentication  Playground   History
-                   │
-                   ▼
-        AI Investigation Engine
-                   │
-      ┌────────────┼────────────┐
-      ▼            ▼            ▼
- Google       GitHub        WHOIS
-      ▼            ▼            ▼
- DNS         News APIs     Other Sources
-                   │
-                   ▼
-        Investigation Report
-```
-
----
-
-# Tech Stack
-
-## Frontend
-
-- React 19
-- TypeScript
-- Vite
-
-## Backend
-
-- Next.js App Router
-- Node.js
-- Better Auth
-- Prisma ORM
-
-## AI
-
-- Google Gemini
-
-## Database
-
-- Prisma
-
----
-
-# Getting Started
-
-## Prerequisites
-
-Install:
-
-- Node.js 18+
-- npm
-- A supported database for Prisma
-- Google Gemini API Key
-
----
-
-## Installation
-
-Clone the repository.
-
-```bash
-git clone https://github.com/JOSEPHIWE/sentinel-api.git
-
-cd sentinel-api
-```
-
-Install dependencies.
-
-```bash
-npm install
-```
-
----
-
-# Configuration
-
-Copy the example environment file.
-
-```bash
-cp .env.example .env
-```
-
-Configure your environment variables.
+The application is configured through environment variables. Create a `.env` file in the root folder:
 
 ```env
-DATABASE_URL=
+# Server Configuration
+NODE_ENV=production
+PORT=3000
 
-GEMINI_API_KEY=
-
-BETTER_AUTH_SECRET=
-
-BETTER_AUTH_URL=
+# AI Meta-Analysis Core API (Required)
+GEMINI_API_KEY=your-gemini-api-key-here
 ```
 
-Generate Prisma client.
+---
 
+## 💻 Local Development
+
+### Prerequisites
+- Node.js (v18 or higher)
+- npm (v9 or higher)
+
+### Installation
+1. Install base dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Spin up the development gateway:
+   ```bash
+   npm run dev
+   ```
+   The development gateway will serve the hot-rebuilding frontend applet alongside versioned API servers at `http://localhost:3000`.
+
+### Executing Hardened Test Suites
+To run our unit, integration, and resiliency testing suites:
 ```bash
-npx prisma generate
-```
-
-Run database migrations.
-
-```bash
-npx prisma migrate dev
+npm run test
 ```
 
 ---
 
-# Start Development Server
+## 🚀 Deployment
 
-```bash
-npm run dev
-```
+The Sentinel platform builds into a highly optimized, fully bundle-compiled standalone package suitable for serverless platforms like Google Cloud Run.
 
-Visit:
+1. **Compile Application Package**:
+   ```bash
+   npm run build
+   ```
+   This generates a statically optimized client package in `dist/` and compiles the backend server into a single, bundled CJS executable `dist/server.cjs` via `esbuild`.
 
-```
-http://localhost:3000
-```
-
----
-
-# Usage
-
-1. Sign in.
-2. Configure API keys.
-3. Start a new investigation.
-4. Select intelligence sources.
-5. Run AI analysis.
-6. Review the generated investigation report.
-7. Access previous investigations from History.
+2. **Boot Production Gateway**:
+   ```bash
+   npm run start
+   ```
 
 ---
 
-# Project Structure
+## 🔍 Troubleshooting
 
-```text
-.
-├── app/
-│   ├── api/
-│   │   ├── auth/
-│   │   └── keys/
-│   ├── layout.tsx
-│   └── page.tsx
-│
-├── src/
-│   ├── components/
-│   │   ├── LandingView.tsx
-│   │   ├── DashboardView.tsx
-│   │   ├── PlaygroundView.tsx
-│   │   ├── HistoryView.tsx
-│   │   ├── DocsView.tsx
-│   │   ├── InvestigationReport.tsx
-│   │   └── AuthView.tsx
-│   │
-│   ├── connectors/
-│   │   ├── dns.ts
-│   │   ├── github.ts
-│   │   ├── google.ts
-│   │   ├── news.ts
-│   │   └── whois.ts
-│   │
-│   ├── services/
-│   ├── utils/
-│   └── types.ts
-│
-├── prisma/
-├── hooks/
-├── lib/
-├── actions/
-├── utils/
-├── server.ts
-├── package.json
-└── README.md
-```
+### 1. Connector Failing Fallbacks
+- **Symptom**: `Failure Fallback` cards appear inside the active scan evidences.
+- **Resolution**: This is the expected graceful degradation behavior when upstream sources fail. Check `/src/utils/logger.ts` for detailed structured logs containing specific error context and request ID references.
 
----
+### 2. Rate Limit Exceeded
+- **Symptom**: Requests return `429 Too Many Requests` responses.
+- **Resolution**: Verify user authentication headers. Public endpoints apply strict IP limits (60/min) whereas authenticated client keys support customizable quotas up to 1200/min.
 
-# Roadmap
-
-Planned enhancements include:
-
-- Additional OSINT providers
-- VirusTotal integration
-- Shodan integration
-- Have I Been Pwned integration
-- Threat intelligence feeds
-- PDF report export
-- IOC extraction
-- Case management
-- Team collaboration
-- Scheduled investigations
-- Graph visualization
-- REST API
-- Docker deployment
-
----
-
-# Getting Help
-
-If you need assistance:
-
-- Review the project documentation.
-- Search existing GitHub Issues.
-- Open a new Issue for bugs or feature requests.
-
-If available, additional documentation can be found in the `docs/` directory.
-
----
-
-# Contributing
-
-Contributions are welcome.
-
-1. Fork the repository.
-
-2. Create a feature branch.
-
-```bash
-git checkout -b feature/my-feature
-```
-
-3. Commit your changes.
-
-```bash
-git commit -m "Add new feature"
-```
-
-4. Push your branch.
-
-```bash
-git push origin feature/my-feature
-```
-
-5. Open a Pull Request.
-
-Please review `CONTRIBUTING.md` before submitting contributions.
-
----
-
-# Maintainer
-
-## Joseph Iwe
-
-**AI Governance • Technology Policy • AI Product Strategy • Project Management**
-
-Building AI-powered investigation platforms, agentic AI systems, and security tooling for researchers, developers, and public-interest technology.
-
-### Connect
-
-- GitHub: https://github.com/JOSEPHIWE
-- Portfolio: https://JosephIwe.com
-- LinkedIn: https://linkedin.com/in/JosephIwe
-- Email: ijosephiwe@gmail.com
-
----
-
-# License
-
-This project is licensed under the MIT License.
-
-See the `LICENSE` file for details.
-
----
-
-## ⭐ Support the Project
-
-If Sentinel API helps your investigations:
-
-- ⭐ Star the repository
-- 🍴 Fork the project
-- 🐞 Report bugs
-- 💡 Suggest new features
-- 🤝 Contribute improvements
-
-Together, we can build more accessible, AI-powered open-source intelligence tools.
+### 3. AI Service Unavailable
+- **Symptom**: `/ready` probe returns `degraded` and logs warn of missing configurations.
+- **Resolution**: Confirm that your `GEMINI_API_KEY` is loaded correctly in your runtime environment.

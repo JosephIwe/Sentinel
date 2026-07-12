@@ -1,0 +1,116 @@
+{
+  "confidence": {
+    "minScore": 0,
+    "maxScore": 100,
+    "rules": [
+      {
+        "id": "conf_whois",
+        "name": "WHOIS Registry Database Found",
+        "points": 20,
+        "explanation": "Active registration records were successfully resolved from WHOIS servers, confirming registrars and registrants."
+      },
+      {
+        "id": "conf_dns",
+        "name": "DNS Zone Resolver Active",
+        "points": 20,
+        "explanation": "Authoritative DNS zones were crawled and validated, resolving IP addresses, mail routing, or nameservers."
+      },
+      {
+        "id": "conf_github",
+        "name": "GitHub Intelligence Active",
+        "points": 15,
+        "explanation": "A public or verified open-source repository and user/org footprint were indexed on GitHub."
+      },
+      {
+        "id": "conf_news",
+        "name": "Global News & Media Mentions Found",
+        "points": 15,
+        "explanation": "Target footprint was corroborated in global publications, press archives, or verified media."
+      },
+      {
+        "id": "conf_independent_agree",
+        "name": "Multiple Independent Sources Agree",
+        "points": 10,
+        "explanation": "Multiple independent intelligence connectors successfully corroborated the same target profile indicators."
+      },
+      {
+        "id": "conf_missing_critical",
+        "name": "Missing Critical Infrastructure Pillars",
+        "points": -15,
+        "explanation": "Target lacks key infrastructure anchors (both WHOIS and DNS), indicating an unmapped ghost presence."
+      },
+      {
+        "id": "conf_contradictory",
+        "name": "Contradictory Telemetry Detected",
+        "points": -20,
+        "explanation": "Sensors reported severe metadata inconsistencies, ownership mismatches, or revoked credentials."
+      }
+    ]
+  },
+  "risk": {
+    "minScore": 0,
+    "maxScore": 100,
+    "rules": [
+      {
+        "id": "risk_suspicious_infra",
+        "name": "Suspicious Infrastructure Signals",
+        "points": 15,
+        "explanation": "Target matches known threat variables, unsecured asset crawls, or exposed/vulnerable configurations."
+      },
+      {
+        "id": "risk_missing_security",
+        "name": "Missing Security & Compliance Policies",
+        "points": 15,
+        "explanation": "No active SECURITY.md policy, Dependabot tracking, or vulnerability guidelines were identified."
+      },
+      {
+        "id": "risk_newly_registered",
+        "name": "Newly Registered Domain Signature",
+        "points": 20,
+        "explanation": "WHOIS records indicate target domain creation date is recent (under 2 years), increasing exposure window risks."
+      },
+      {
+        "id": "risk_disposable_email",
+        "name": "Disposable Email Provider Usage",
+        "points": 15,
+        "explanation": "Associated registry contacts utilize a transient or anonymous disposable email handler."
+      },
+      {
+        "id": "risk_inconsistent_ownership",
+        "name": "Inconsistent Ownership Registry",
+        "points": 15,
+        "explanation": "Identified registrant contacts, organizational names, or addresses contain discrepancies across sensors."
+      },
+      {
+        "id": "risk_unresolved_findings",
+        "name": "Large Density of Unresolved Findings",
+        "points": 15,
+        "explanation": "A high count of active vulnerabilities, open issues, or warning events remains unmitigated."
+      },
+      {
+        "id": "risk_long_established",
+        "name": "Long-Established Domain Track Record",
+        "points": -15,
+        "explanation": "WHOIS records verify long-standing domain history (over 5 years), indicating institutional stability."
+      },
+      {
+        "id": "risk_verified_org",
+        "name": "Verified GitHub Organization Footprint",
+        "points": -15,
+        "explanation": "Profile telemetry is certified under a verified enterprise or organization account structure."
+      },
+      {
+        "id": "risk_stable_infra",
+        "name": "Stable Core Infrastructure Mappings",
+        "points": -15,
+        "explanation": "Standard DNS configuration resolved multiple core nameservers and stable routing nodes."
+      },
+      {
+        "id": "risk_strong_security",
+        "name": "Strong Codified Security Posture",
+        "points": -20,
+        "explanation": "Explicit threat screening, automated alerts, and strong security scores are configured in target's workspace."
+      }
+    ]
+  }
+}

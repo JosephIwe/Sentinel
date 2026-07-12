@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { InvestigationResult, IntelligenceReport, TimelineEvent, IntelligenceFinding } from "../types";
 import { INTEL_SYSTEM_INSTRUCTION, generateIntelligencePrompt } from "./prompts/intelligencePrompt";
+import { ScoringService } from "./scoring";
 
 /**
  * AI Intelligence Service
@@ -136,6 +137,17 @@ export class IntelligenceService {
         if (!parsed.findings) {
           parsed.findings = [];
         }
+
+        // Run deterministic ScoringService to overwrite AI-speculated scores and attach breakdowns
+        const scoringService = new ScoringService();
+        const confBreakdown = scoringService.calculateConfidence(result);
+        const riskBreakdown = scoringService.calculateRisk(result);
+
+        parsed.confidence = confBreakdown.score;
+        parsed.riskScore = riskBreakdown.score;
+        parsed.confidenceBreakdown = confBreakdown;
+        parsed.riskBreakdown = riskBreakdown;
+
         return parsed;
       }
 
@@ -202,9 +214,13 @@ export class IntelligenceService {
       result.evidences.every(e => e.id?.includes("fallback") || e.description.toLowerCase().includes("placeholder") || e.description.toLowerCase().includes("mock") || e.strength < 0.5) ||
       result.confidence < 30;
 
-    // Calculate structural metrics
-    const baseRisk = isMockOrEmpty ? 10 : Math.min(90, Math.max(20, (entityCount * 7) + (relationshipCount * 4)));
-    const refinedConfidence = Math.min(100, Math.round(result.confidence));
+    // Calculate structural metrics using deterministic ScoringService
+    const scoringService = new ScoringService();
+    const confBreakdown = scoringService.calculateConfidence(result);
+    const riskBreakdown = scoringService.calculateRisk(result);
+
+    const baseRisk = riskBreakdown.score;
+    const refinedConfidence = confBreakdown.score;
 
     // Formulate structured keyFindings with strict categories
     const keyFindings: string[] = [];
@@ -321,7 +337,9 @@ export class IntelligenceService {
           description: "System recorded target search and initiated parallel intelligence discovery.",
           source: "Sentinel Coordinator"
         }
-      ]
+      ],
+      confidenceBreakdown: confBreakdown,
+      riskBreakdown: riskBreakdown
     };
   }
 }

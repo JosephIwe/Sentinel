@@ -131,6 +131,7 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
 
   // Orchestrator States
   const [isInvestigating, setIsInvestigating] = useState<boolean>(false);
+  const [jobProgress, setJobProgress] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
   const [response, setResponse] = useState<InvestigationApiResponse | null>(null);
@@ -159,35 +160,15 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
     }
 
     setIsInvestigating(true);
+    setJobProgress(0);
     setResponse(null);
     setActiveTab("overview"); // reset to overview tab on new run
     setViewMode("report");
-
-    // Loading ticker simulation for active sensors
-    const orchestrationTicks = [
-      "Broadcasting signature request...",
-      "Resolving WHOIS registry records...",
-      "Scanning global authoritative DNS nameservers...",
-      "Crawling GitHub contributor indices...",
-      "Querying international news & media channels...",
-      "Correlating multi-source threat telemetry...",
-      "Invoking server-side intelligence analyzer...",
-      "Synthesizing cognitive risk index ratios...",
-      "Assembling structured threat report JSON..."
-    ];
-
-    let stepIdx = 0;
-    setStatusMsg(orchestrationTicks[0]);
-    const timer = setInterval(() => {
-      if (stepIdx < orchestrationTicks.length - 1) {
-        stepIdx++;
-        setStatusMsg(orchestrationTicks[stepIdx]);
-      }
-    }, 850);
+    setStatusMsg("Initializing background task...");
 
     try {
-      // 2. Consume existing api endpoint exactly as specified
-      const res = await fetch("/api/investigate", {
+      // 2. Consume the asynchronous api endpoint to start a background job
+      const res = await fetch("/api/investigations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -199,20 +180,63 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
         })
       });
 
-      const data = await res.json();
-      clearInterval(timer);
-
+      const startData = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || `Orchestration service returned HTTP status ${res.status}`);
+        throw new Error(startData.error || `Orchestration service returned HTTP status ${res.status}`);
       }
 
-      // 3. Populate response
-      setResponse(data);
-      saveToHistory(type, value, data);
+      const jobId = startData.jobId;
+      setJobProgress(15);
+      setStatusMsg("Queuing and initializing target scan...");
+
+      // 3. Poll for job completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`/api/investigations/${jobId}`);
+          if (!pollRes.ok) {
+            clearInterval(pollInterval);
+            setIsInvestigating(false);
+            setError(`Failed to poll job status: HTTP ${pollRes.status}`);
+            return;
+          }
+          const jobData = await pollRes.json();
+          setJobProgress(jobData.progress || 0);
+
+          if (jobData.progress < 25) {
+            setStatusMsg("Queuing and initializing target scan...");
+          } else if (jobData.progress < 55) {
+            setStatusMsg("Scanning target registry nodes and DNS nameservers...");
+          } else if (jobData.progress < 80) {
+            setStatusMsg("Extracting metadata and querying cyber intelligence feeds...");
+          } else if (jobData.progress < 98) {
+            setStatusMsg("Synthesizing strategic cognitive threat and vulnerability indexes...");
+          } else {
+            setStatusMsg("Compiling unified intelligence and canonical entities report...");
+          }
+
+          if (jobData.status === "completed") {
+            clearInterval(pollInterval);
+            setResponse(jobData.report);
+            saveToHistory(type, value, jobData.report);
+            setIsInvestigating(false);
+          } else if (jobData.status === "failed") {
+            clearInterval(pollInterval);
+            setError(jobData.error || "Background investigation job failed.");
+            setIsInvestigating(false);
+          } else if (jobData.status === "cancelled") {
+            clearInterval(pollInterval);
+            setError("Background investigation job was cancelled.");
+            setIsInvestigating(false);
+          }
+        } catch (pollErr: any) {
+          clearInterval(pollInterval);
+          setError(pollErr.message || "Network error while polling job status.");
+          setIsInvestigating(false);
+        }
+      }, 800);
+
     } catch (err: any) {
-      clearInterval(timer);
       setError(err.message || "An unresolved network error occurred while running the investigation.");
-    } finally {
       setIsInvestigating(false);
     }
   };
@@ -389,7 +413,7 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
           
           {/* Active Loading Skeletons */}
           {isInvestigating && (
-            <div className="bg-[#09090c]/80 border border-neutral-800 rounded-xl p-6 sm:p-8 space-y-8 shadow-2xl animate-pulse">
+            <div className="bg-[#09090c]/80 border border-neutral-800 rounded-xl p-6 sm:p-8 space-y-8 shadow-2xl">
               <div className="flex items-center justify-between border-b border-neutral-800/80 pb-4">
                 <div className="flex items-center space-x-3">
                   <Loader2 className="w-4.5 h-4.5 text-neutral-400 animate-spin" />
@@ -400,6 +424,23 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
                 <span className="text-[9px] font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-800">
                   PIPELINE_RESOLVING
                 </span>
+              </div>
+
+              {/* Real-time Job Progress Indicator */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400">
+                  <span className="flex items-center space-x-1.5">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
+                    <span>ASYNC INTEL WORKER ACTIVE</span>
+                  </span>
+                  <span className="text-emerald-400 font-bold">{jobProgress}%</span>
+                </div>
+                <div className="w-full bg-neutral-950 rounded-full h-2 border border-neutral-850 overflow-hidden p-[1px]">
+                  <div 
+                    className="bg-gradient-to-r from-emerald-500 via-blue-500 to-indigo-600 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${jobProgress}%` }}
+                  />
+                </div>
               </div>
 
               {/* Skeletons block */}

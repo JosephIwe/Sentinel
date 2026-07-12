@@ -11,7 +11,17 @@ import { GithubConnector } from "./src/connectors/github";
 import { GithubIntelligenceConnector } from "./src/connectors/github-intel";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
+import { InvestigationWorker } from "./src/services/investigationWorker";
 import { validateInvestigationInput } from "./utils/validation";
+import { openApiSpec } from "./src/api/openapi";
+import { getSwaggerHtml } from "./src/api/swaggerHtml";
+import { DistributedRateLimiter } from "./utils/rate-limiter";
+import {
+  requestIdMiddleware,
+  auditLoggerMiddleware,
+  validateEnvironment,
+  errorHandler
+} from "./utils/observability";
 
 dotenv.config();
 
@@ -37,6 +47,40 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+// Apply global request correlation tracking and performance auditing
+app.use(requestIdMiddleware);
+app.use(auditLoggerMiddleware);
+
+// Liveness, readiness, and version probes for Kubernetes/Cloud Run orchestration
+app.get("/health", (req, res) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+app.get("/ready", (req, res) => {
+  const aiClientAvailable = getAiClient() !== null;
+  res.json({
+    status: "ready",
+    timestamp: new Date().toISOString(),
+    services: {
+      geminiApi: aiClientAvailable ? "connected" : "degraded",
+      inMemoryStore: "ready"
+    }
+  });
+});
+
+app.get("/version", (req, res) => {
+  res.json({
+    version: "1.0.0",
+    name: "Sentinel API Intelligence Platform",
+    nodeVersion: process.version,
+    env: process.env.NODE_ENV || "development"
+  });
+});
 
 // In-Memory Database (Scale-ready simulation representing Prisma/PostgreSQL state)
 let currentUser: any = {
@@ -116,14 +160,114 @@ function generateSecret() {
   return token;
 }
 
-// REST APIs
+// ==========================================
+// 7. Core Sentinel API - Version 1 Router
+// ==========================================
+const apiV1Router = express.Router();
 
-// 1. Auth Endpoint
-app.get("/api/auth/me", (req, res) => {
+// Middleware to authenticate external API and SDK clients with API Keys,
+// while gracefully falling back to cookie session logins for browser context.
+function authenticateRequest(req: any, res: any, next: any) {
+  const apiKeyHeader = req.headers["x-api-key"];
+  const authHeader = req.headers["authorization"];
+  let secretToken = "";
+
+  if (apiKeyHeader) {
+    secretToken = apiKeyHeader.toString().trim();
+  } else if (authHeader && authHeader.toString().toLowerCase().startsWith("bearer ")) {
+    secretToken = authHeader.toString().substring(7).trim();
+  }
+
+  if (secretToken) {
+    const keyRecord = apiKeys.find(k => k.secret === secretToken);
+    if (!keyRecord) {
+      return res.status(401).json({ error: "Access Denied. The provided API key is invalid." });
+    }
+    if (keyRecord.status !== "active") {
+      return res.status(401).json({ error: "Access Denied. This API key has been revoked." });
+    }
+    
+    // Key is verified, track stats
+    keyRecord.requestCount += 1;
+    keyRecord.lastUsedAt = new Date().toISOString();
+    
+    req.apiKey = keyRecord;
+    req.user = {
+      id: "usr_api_client",
+      email: "api@sentinelapi.dev",
+      name: `API Client (${keyRecord.name})`,
+      companyName: "Sentinel Developer Workspace",
+      plan: "Enterprise",
+      createdAt: new Date().toISOString()
+    };
+    return next();
+  }
+
+  // Fallback to active browser session
+  if (currentUser) {
+    req.user = currentUser;
+    return next();
+  }
+
+  return res.status(401).json({
+    error: "Access Denied. A valid X-API-Key, Bearer token, or active session is required."
+  });
+}
+
+// Security rate limiting middleware protecting resources from burst or malicious requests.
+async function rateLimitMiddleware(req: any, res: any, next: any) {
+  const apiKeyHeader = req.headers["x-api-key"];
+  const authHeader = req.headers["authorization"];
+  let secretToken = "";
+
+  if (apiKeyHeader) {
+    secretToken = apiKeyHeader.toString().trim();
+  } else if (authHeader && authHeader.toString().toLowerCase().startsWith("bearer ")) {
+    secretToken = authHeader.toString().substring(7).trim();
+  }
+
+  let limit = 60; // Default limit for IP address based tracking
+  let identifier = `ip_${req.ip}`;
+
+  if (secretToken) {
+    const keyRecord = apiKeys.find(k => k.secret === secretToken);
+    if (keyRecord) {
+      limit = keyRecord.rateLimit || 1200;
+      identifier = `key_${keyRecord.id}`;
+    }
+  }
+
+  try {
+    const rateCheck = await DistributedRateLimiter.check(identifier, limit, 60000);
+    res.setHeader("X-RateLimit-Limit", rateCheck.limit);
+    res.setHeader("X-RateLimit-Remaining", rateCheck.remaining);
+    res.setHeader("X-RateLimit-Reset", rateCheck.resetSeconds);
+
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        error: "Too Many Requests",
+        message: `Rate limit exceeded. Maximum allowed is ${limit} requests per minute. Retry after ${rateCheck.resetSeconds} seconds.`,
+        retryAfterSeconds: rateCheck.resetSeconds,
+        requestId: req.id
+      });
+    }
+    next();
+  } catch (err) {
+    // Fail-open for high resiliency
+    next();
+  }
+}
+
+apiV1Router.use(rateLimitMiddleware);
+
+// REST APIs V1 Endpoints
+
+// 1. Session Auth
+apiV1Router.get("/auth/me", (req, res) => {
   res.json({ user: currentUser });
 });
 
-app.post("/api/auth/login", (req, res) => {
+apiV1Router.post("/auth/login", (req, res) => {
   const { email, name, companyName } = req.body;
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
@@ -139,7 +283,7 @@ app.post("/api/auth/login", (req, res) => {
   res.json({ user: currentUser });
 });
 
-app.post("/api/auth/logout", (req, res) => {
+apiV1Router.post("/auth/logout", (req, res) => {
   currentUser = {
     id: "usr_guest",
     email: "guest@sentinelapi.dev",
@@ -152,11 +296,11 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 // 2. API Key Management
-app.get("/api/keys", (req, res) => {
+apiV1Router.get("/keys", (req, res) => {
   res.json({ keys: apiKeys });
 });
 
-app.post("/api/keys", (req, res) => {
+apiV1Router.post("/keys", (req, res) => {
   const { name, rateLimit } = req.body;
   if (!name) {
     return res.status(400).json({ error: "Key name is required" });
@@ -175,7 +319,7 @@ app.post("/api/keys", (req, res) => {
   res.json({ key: newKey });
 });
 
-app.put("/api/keys/:id/revoke", (req, res) => {
+apiV1Router.put("/keys/:id/revoke", (req, res) => {
   const { id } = req.params;
   const keyIndex = apiKeys.findIndex(k => k.id === id);
   if (keyIndex === -1) {
@@ -185,7 +329,7 @@ app.put("/api/keys/:id/revoke", (req, res) => {
   res.json({ key: apiKeys[keyIndex] });
 });
 
-app.post("/api/keys/:id/rotate", (req, res) => {
+apiV1Router.post("/keys/:id/rotate", (req, res) => {
   const { id } = req.params;
   const keyIndex = apiKeys.findIndex(k => k.id === id);
   if (keyIndex === -1) {
@@ -197,12 +341,12 @@ app.post("/api/keys/:id/rotate", (req, res) => {
 });
 
 // 3. Extraction Jobs
-app.get("/api/jobs", (req, res) => {
+apiV1Router.get("/jobs", (req, res) => {
   res.json({ jobs: extractionJobs });
 });
 
-// 4. Centerpiece: Real Gemini AI Transform Proxy
-app.post("/api/playground/transform", async (req, res) => {
+// 4. Centerpiece: Gemini AI Transform Proxy
+apiV1Router.post("/playground/transform", async (req, res) => {
   const { url, rawText, schemaType, schemaFields } = req.body;
 
   if (!url && !rawText) {
@@ -221,7 +365,6 @@ app.post("/api/playground/transform", async (req, res) => {
   The pricing model starts with a Free Tier (up to 50,000 requests/month) and scales to the Enterprise Tier for millions of queries.
   Our contact email is buildwisegroupofcompany@gmail.com and we are headquartered in London, UK.`;
 
-  // Standard staff-engineer prompt constructing a rigid schema request
   const fieldsDescription = schemaFields
     .map(f => `- ${f.name} (type: ${f.type}): ${f.description}`)
     .join("\n");
@@ -242,8 +385,6 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
   const aiClient = getAiClient();
 
   if (!aiClient) {
-    // Graceful fallback for local development or missing API key
-    // Perform a highly realistic simulation of Sentinel API using fields provided by the developer
     const simulatedResult: Record<string, any> = {};
     schemaFields.forEach(f => {
       if (f.type === "number") {
@@ -284,7 +425,6 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
   }
 
   try {
-    // Generate actual structured schema response properties for responseSchema
     const propertiesObj: Record<string, any> = {};
     const requiredFields: string[] = [];
     
@@ -339,7 +479,6 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
 
     extractionJobs.unshift(realJob);
 
-    // Increment request tracking metrics for active API Keys
     if (apiKeys.length > 0) {
       const activeKeys = apiKeys.filter(k => k.status === "active");
       if (activeKeys.length > 0) {
@@ -363,8 +502,8 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
   }
 });
 
-// 5. Statistics Overview
-app.get("/api/metrics", (req, res) => {
+// 5. Statistics Metrics Overview
+apiV1Router.get("/metrics", (req, res) => {
   const activeKeysCount = apiKeys.filter(k => k.status === "active").length;
   const totalReq = apiKeys.reduce((acc, k) => acc + k.requestCount, 0);
   res.json({
@@ -377,6 +516,11 @@ app.get("/api/metrics", (req, res) => {
       dataExtractedBytes: totalReq * 4124
     }
   });
+});
+
+// 6. OpenAPI Specification output
+apiV1Router.get("/openapi.json", (req, res) => {
+  res.json(openApiSpec);
 });
 
 // 6. Cyber-Threat and Asset Discovery Investigation Routes
@@ -398,6 +542,127 @@ const investigationService = new InvestigationService([
   githubIntelligenceConnector,
 ]);
 
+// Seed in-memory list tracking successful multi-source intelligence reports
+let investigationHistory: any[] = [
+  {
+    id: "inv_openai_981",
+    userId: "usr_sentinel_94921",
+    type: "domain",
+    query: "openai.com",
+    summary: "Investigation completed for openai.com. Confirmed defensive domain setup and active infrastructure.",
+    confidence: 95,
+    riskScore: 12,
+    createdAt: "2026-07-10T14:30:00Z",
+    resultJson: JSON.stringify({
+      summary: "Completed strategic perimeter scans on openai.com.",
+      executiveSummary: "Target exhibits a defensive, highly robust structural infrastructure with validated DNS mappings and trusted SSL certificates.",
+      entities: [
+        { id: "ent_openai", type: "Organization", name: "OpenAI Inc.", properties: { confidence: 98, country: "United States" } },
+        { id: "ent_dns_ns1", type: "IPAddress", name: "172.64.150.12", properties: { provider: "Cloudflare" } }
+      ],
+      relationships: [
+        { id: "rel_01", source: "ent_openai", target: "ent_dns_ns1", type: "RECORDS_RESOLVE_TO", properties: {} }
+      ],
+      canonicalEntities: [
+        { id: "ent_openai", label: "OpenAI Inc.", category: "Organization", description: "Strategic Artificial Intelligence research and deployment laboratory." }
+      ],
+      timeline: [
+        { date: "2026-07-10T14:28:00Z", event: "Sensor network initiated." },
+        { date: "2026-07-10T14:29:15Z", event: "Whois register entry resolved." },
+        { date: "2026-07-10T14:30:00Z", event: "AI Intelligence report generated." }
+      ],
+      confidence: 95,
+      riskScore: 12,
+      confidenceBreakdown: { identity: 98, sourceTrust: 95, logicalConsistency: 92 },
+      riskBreakdown: { vulnerability: 5, reputation: 10, infrastructure: 20 },
+      recommendations: ["Ensure subdomains maintain standard SPF/DKIM validation."],
+      sources: ["whois", "dns", "news"],
+      evidences: [],
+      findings: []
+    })
+  },
+  {
+    id: "inv_example_711",
+    userId: "usr_sentinel_94921",
+    type: "domain",
+    query: "example.com",
+    summary: "Completed strategic posture scan of example.com. No active high-risk vulnerabilities found.",
+    confidence: 85,
+    riskScore: 5,
+    createdAt: "2026-07-11T09:00:00Z",
+    resultJson: JSON.stringify({
+      summary: "Strategic scan completed on example.com.",
+      executiveSummary: "Target shows standard domain infrastructure footprint.",
+      entities: [
+        { id: "ent_example", type: "Organization", name: "Example Corp", properties: { confidence: 90 } }
+      ],
+      relationships: [],
+      canonicalEntities: [
+        { id: "ent_example", label: "Example Corp", category: "Organization", description: "RFC standard documentation domain provider." }
+      ],
+      timeline: [],
+      confidence: 85,
+      riskScore: 5,
+      confidenceBreakdown: { identity: 90, sourceTrust: 80, logicalConsistency: 85 },
+      riskBreakdown: { vulnerability: 2, reputation: 5, infrastructure: 8 },
+      recommendations: ["No corrective actions needed at this time."],
+      sources: ["dns", "whois"],
+      evidences: [],
+      findings: []
+    })
+  },
+  {
+    id: "inv_sec_994",
+    userId: "usr_sentinel_94921",
+    type: "email",
+    query: "security@company.com",
+    summary: "Scanned security contact record security@company.com.",
+    confidence: 90,
+    riskScore: 18,
+    createdAt: "2026-07-11T16:45:00Z",
+    resultJson: JSON.stringify({
+      summary: "Security contact vector verified for company.com.",
+      executiveSummary: "Target exhibits a functional security reporting channel. High signal-to-noise ratio in active MX records.",
+      entities: [
+        { id: "ent_email", type: "Person", name: "Security Team", properties: { email: "security@company.com" } }
+      ],
+      relationships: [],
+      canonicalEntities: [],
+      timeline: [],
+      confidence: 90,
+      riskScore: 18,
+      confidenceBreakdown: { identity: 95, sourceTrust: 90, logicalConsistency: 85 },
+      riskBreakdown: { vulnerability: 10, reputation: 25, infrastructure: 20 },
+      recommendations: ["Audit third-party SaaS email dispatch permissions."],
+      sources: ["dns", "news"],
+      evidences: [],
+      findings: []
+    })
+  }
+];
+
+// Initialize the asynchronous background worker with database hook
+const investigationWorker = new InvestigationWorker(
+  investigationService, 
+  getAiClient(),
+  (job) => {
+    if (job && job.status === "completed" && job.report) {
+      const newRecord = {
+        id: job.resultId || `res_${job.id}`,
+        userId: job.userId || "usr_guest",
+        type: job.type,
+        query: job.query,
+        summary: job.report.summary || "Asynchronous investigation completed.",
+        confidence: job.report.confidence || 90,
+        riskScore: job.report.riskScore || 0,
+        createdAt: job.completedAt || new Date().toISOString(),
+        resultJson: JSON.stringify(job.report)
+      };
+      investigationHistory.unshift(newRecord);
+    }
+  }
+);
+
 // Map incoming API target types to our internal query-engine categories
 function mapTypeToQueryType(type: string): "Domain" | "Organization" | "Person" | "IPAddress" | "Generic" {
   const normalized = type.trim().toLowerCase();
@@ -415,11 +680,52 @@ function mapTypeToQueryType(type: string): "Domain" | "Organization" | "Person" 
   }
 }
 
+// 6b. Asynchronous Investigation Jobs Endpoints inside the router
+
+apiV1Router.post("/investigations", authenticateRequest, (req: any, res) => {
+  const validation = validateInvestigationInput(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.message });
+  }
+
+  const { type, value } = req.body;
+  const userId = req.user ? req.user.id : "usr_guest";
+
+  const job = investigationWorker.createJob(userId, type, value);
+
+  return res.status(201).json({
+    jobId: job.id,
+    status: job.status
+  });
+});
+
+apiV1Router.get("/investigations/:jobId", (req, res) => {
+  const { jobId } = req.params;
+  const job = investigationWorker.getJob(jobId);
+
+  if (!job) {
+    return res.status(404).json({ error: "Investigation job not found" });
+  }
+
+  return res.status(200).json({
+    id: job.id,
+    jobId: job.id,
+    userId: job.userId,
+    status: job.status,
+    progress: job.progress,
+    type: job.type,
+    query: job.query,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
+    error: job.error,
+    resultId: job.resultId,
+    report: job.status === "completed" ? job.report : undefined
+  });
+});
+
 // Unified Endpoint to run parallel multi-source investigation and synthesize strategic intelligence reports
-app.post("/api/investigate", async (req, res) => {
-  // Check if we are running the new unified API workflow (which uses 'value')
+apiV1Router.post("/investigate", authenticateRequest, async (req: any, res) => {
   if (req.body && (req.body.value !== undefined || (req.body.type !== undefined && !req.body.term))) {
-    // 1. Validate incoming input payloads using our reusable validation module
     const validation = validateInvestigationInput(req.body);
     if (!validation.valid) {
       return res.status(400).json({ error: validation.message });
@@ -428,33 +734,49 @@ app.post("/api/investigate", async (req, res) => {
     const { type, value } = req.body;
 
     try {
-      // 2. Map input target parameters to correct query category shapes
       const query = {
         term: value.trim(),
         type: mapTypeToQueryType(type),
       };
 
-      // 3. Trigger multi-connector parallel infrastructure scan
       const investigationResult = await investigationService.investigate(query);
 
-      // 4. Feed resolved identity footprint and relationships to the AI intelligence engine
       const aiClient = getAiClient();
       const intelligenceService = new IntelligenceService(aiClient);
       const intelligenceReport = await intelligenceService.analyze(investigationResult);
 
-      // 5. Structure and respond with the unified analytical schema report conforming to the requested schema
-      return res.status(200).json({
+      const reportPayload = {
         summary: intelligenceReport.summary,
         executiveSummary: intelligenceReport.executiveSummary,
         entities: investigationResult.entities,
         relationships: investigationResult.relationships,
+        canonicalEntities: investigationResult.canonicalEntities,
         timeline: intelligenceReport.timeline,
         confidence: intelligenceReport.confidence,
+        riskScore: intelligenceReport.riskScore,
+        confidenceBreakdown: intelligenceReport.confidenceBreakdown,
+        riskBreakdown: intelligenceReport.riskBreakdown,
         recommendations: intelligenceReport.recommendations,
         sources: investigationResult.sources,
         evidences: investigationResult.evidences,
         findings: intelligenceReport.findings || [],
-      });
+      };
+
+      // Append completed synchronous report to history
+      const newRecord = {
+        id: "inv_" + Math.random().toString(36).substr(2, 9),
+        userId: req.user ? req.user.id : "usr_guest",
+        type,
+        query: value,
+        summary: intelligenceReport.summary || "Synchronous investigation completed.",
+        confidence: intelligenceReport.confidence || 90,
+        riskScore: intelligenceReport.riskScore || 0,
+        createdAt: new Date().toISOString(),
+        resultJson: JSON.stringify(reportPayload)
+      };
+      investigationHistory.unshift(newRecord);
+
+      return res.status(200).json(reportPayload);
 
     } catch (err: any) {
       console.error("Unified threat intelligence execution pipeline failure:", err);
@@ -465,7 +787,6 @@ app.post("/api/investigate", async (req, res) => {
     }
   }
 
-  // Backwards-compatible fallback path for the multi-step interactive developer playground UI
   const { term, type } = req.body;
   if (!term) {
     return res.status(400).json({ error: "Search term ('term' or 'value') is required for investigation" });
@@ -481,8 +802,7 @@ app.post("/api/investigate", async (req, res) => {
   }
 });
 
-// Endpoint to analyze the investigation result with AI Intelligence Service
-app.post("/api/intelligence/analyze", async (req, res) => {
+apiV1Router.post("/intelligence/analyze", async (req, res) => {
   const { result } = req.body;
   if (!result || !result.query || !result.entities) {
     return res.status(400).json({ error: "Valid InvestigationResult is required for analysis" });
@@ -499,7 +819,79 @@ app.post("/api/intelligence/analyze", async (req, res) => {
   }
 });
 
+// 8. Historical Scans Index
+apiV1Router.get("/history", authenticateRequest, (req: any, res) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  
+  const startIndex = (page - 1) * limit;
+  const endIndex = page * limit;
+  
+  const paginatedHistory = investigationHistory.slice(startIndex, endIndex);
+  
+  const historyView = paginatedHistory.map(record => ({
+    id: record.id,
+    userId: record.userId,
+    type: record.type,
+    query: record.query,
+    summary: record.summary,
+    confidence: record.confidence,
+    riskScore: record.riskScore,
+    createdAt: record.createdAt
+  }));
+
+  res.json({
+    history: historyView,
+    pagination: {
+      total: investigationHistory.length,
+      page,
+      limit,
+      pages: Math.ceil(investigationHistory.length / limit)
+    }
+  });
+});
+
+// 9. Fetch Structured Scan Report
+apiV1Router.get("/reports/:id", authenticateRequest, (req, res) => {
+  const { id } = req.params;
+  
+  const historicalRecord = investigationHistory.find(r => r.id === id);
+  if (historicalRecord) {
+    try {
+      const parsedReport = JSON.parse(historicalRecord.resultJson);
+      return res.json(parsedReport);
+    } catch {
+      return res.status(500).json({ error: "Failed to parse report representation." });
+    }
+  }
+
+  const activeJob = investigationWorker.getJob(id);
+  if (activeJob && activeJob.status === "completed" && activeJob.report) {
+    return res.json(activeJob.report);
+  }
+
+  return res.status(404).json({ error: `Intelligence report with ID '${id}' not found.` });
+});
+
+// Mount the versioned router
+app.use("/api/v1", apiV1Router);
+app.use("/api", apiV1Router);
+
+// Expose OpenAPI interactive visual documentation UI
+app.get("/docs", (req, res) => {
+  res.send(getSwaggerHtml("/api/v1/openapi.json"));
+});
+app.get("/api/v1/docs", (req, res) => {
+  res.send(getSwaggerHtml("/api/v1/openapi.json"));
+});
+
+// Centralized error handler to capture uncaught middleware errors and protect secrets
+app.use(errorHandler);
+
 async function startServer() {
+  // Audit and validate configuration on launch
+  validateEnvironment();
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
