@@ -3,11 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import { GoogleConnector } from "./src/connectors/google";
 import { WhoisConnector } from "./src/connectors/whois";
 import { DnsConnector } from "./src/connectors/dns";
-import { NewsConnector } from "./src/connectors/news";
-import { GithubConnector } from "./src/connectors/github";
 import { GithubIntelligenceConnector } from "./src/connectors/github-intel";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
@@ -526,19 +523,23 @@ apiV1Router.get("/openapi.json", (req, res) => {
 // 6. Cyber-Threat and Asset Discovery Investigation Routes
 
 // Instantiate connectors and service instances
-const googleConnector = new GoogleConnector();
+//
+// NOTE: GoogleConnector, GithubConnector (legacy), and NewsConnector are
+// intentionally NOT instantiated or registered below. They do not call any
+// real external API — they synthesize placeholder data (see `verified: false`
+// on their ConnectorResult, added in src/types.ts and those connector files).
+// They are kept in src/connectors/ as reference implementations for a future
+// real API integration, but must never run in the live investigation
+// pipeline, since their output would be indistinguishable from real
+// intelligence to an analyst. Only connectors that query a real external
+// data source are registered here.
 const whoisConnector = new WhoisConnector();
 const dnsConnector = new DnsConnector();
-const newsConnector = new NewsConnector();
-const githubConnector = new GithubConnector();
 const githubIntelligenceConnector = new GithubIntelligenceConnector();
 
 const investigationService = new InvestigationService([
-  googleConnector,
   whoisConnector,
   dnsConnector,
-  newsConnector,
-  githubConnector,
   githubIntelligenceConnector,
 ]);
 
@@ -688,10 +689,10 @@ apiV1Router.post("/investigations", authenticateRequest, (req: any, res) => {
     return res.status(400).json({ error: validation.message });
   }
 
-  const { type, value } = req.body;
+  const { type, value, options } = req.body;
   const userId = req.user ? req.user.id : "usr_guest";
 
-  const job = investigationWorker.createJob(userId, type, value);
+  const job = investigationWorker.createJob(userId, type, value, options);
 
   return res.status(201).json({
     jobId: job.id,
@@ -731,19 +732,23 @@ apiV1Router.post("/investigate", authenticateRequest, async (req: any, res) => {
       return res.status(400).json({ error: validation.message });
     }
 
-    const { type, value } = req.body;
+    const { type, value, options } = req.body;
+    const syncStartedAt = Date.now();
 
     try {
       const query = {
         term: value.trim(),
         type: mapTypeToQueryType(type),
+        options: options,
       };
 
       const investigationResult = await investigationService.investigate(query);
 
       const aiClient = getAiClient();
       const intelligenceService = new IntelligenceService(aiClient);
+      const aiSummaryStart = Date.now();
       const intelligenceReport = await intelligenceService.analyze(investigationResult);
+      const aiSummaryTimeMs = Date.now() - aiSummaryStart;
 
       const reportPayload = {
         summary: intelligenceReport.summary,
@@ -760,6 +765,13 @@ apiV1Router.post("/investigate", authenticateRequest, async (req: any, res) => {
         sources: investigationResult.sources,
         evidences: investigationResult.evidences,
         findings: intelligenceReport.findings || [],
+        validationReport: intelligenceReport.validationReport,
+        connectorStatuses: investigationResult.connectorStatuses,
+        performance: {
+          ...investigationResult.performance,
+          aiSummaryTimeMs,
+          totalTimeMs: Date.now() - syncStartedAt
+        }
       };
 
       // Append completed synchronous report to history
@@ -793,8 +805,12 @@ apiV1Router.post("/investigate", authenticateRequest, async (req: any, res) => {
   }
 
   try {
+    const syncStartedAt = Date.now();
     const query = { term, type: type || "Generic" };
     const result = await investigationService.investigate(query);
+    if (result.performance) {
+      result.performance.totalTimeMs = Date.now() - syncStartedAt;
+    }
     return res.status(200).json(result);
   } catch (err: any) {
     console.error("Sandbox investigation orchestration failure:", err);

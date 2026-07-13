@@ -51,6 +51,11 @@ export function generateIntelligencePrompt(result: InvestigationResult): string 
     result.evidences.every(e => e.id?.includes("fallback") || e.description.toLowerCase().includes("placeholder") || e.description.toLowerCase().includes("mock") || e.strength < 0.5) ||
     result.confidence < 30;
   
+  const isGroundedMode = !!result.query.options?.grounded;
+  const groundedDirective = isGroundedMode
+    ? "\n6. GROUNDED RESPONSE MANDATE: Every single sentence in your \"summary\" and \"executiveSummary\" MUST explicitly contain and reference at least one valid evidence ID from the DISCOVERED EVIDENCE CHANNELS list (e.g. \"[ev_dns_1]\" or \"[ev_whois_1]\"). Any sentence that does not contain a valid evidence ID as an inline citation bracket will be automatically removed by the Validation Layer."
+    : "";
+
   return `Please perform a deep intelligence meta-analysis on the consolidated search results for the target node: "${queryTerm}" (${queryType}).
 
 SENSOR COVERAGE TELEMETRY:
@@ -85,7 +90,7 @@ OPERATIONAL DIRECTIVES:
 2. MISSING SENSORS MANDATE: For any sensor listed under "INACTIVE/MISSING SENSORS" (e.g. ${missingSensors.join(", ")}), you MUST explicitly state in the executiveSummary and findings that no verified public evidence was found from that source.
 3. CAUTIOUS REPORTING MANDATE: If "MOCK OR EMPTY DATA DETECTED" is "YES", do NOT generate a detailed, speculative analysis. Instead, generate a highly cautious, brief summary stating explicitly that no verified threat telemetry or public records exist for this target.
 4. EVIDENCE DISCOVERY LINKAGE: Every major item in the "findings" array MUST explicitly list the supporting evidence IDs from the DISCOVERED EVIDENCE CHANNELS list. If there is no specific evidence, you MUST classify it as "AI Assessment" and set "evidenceIds" to an empty array []. Otherwise, classify as "Verified Finding" and specify one or more matching "evidenceIds".
-5. CONFIDENCE EXPLANATION MANDATE: Inside the "executiveSummary", you MUST include a dedicated section/paragraph titled "CONFIDENCE SCORE EXPLANATION" explaining precisely why the confidence score of ${result.confidence}% was assigned based on sensor coverage and cross-sensor validation.
+5. CONFIDENCE EXPLANATION MANDATE: Inside the "executiveSummary", you MUST include a dedicated section/paragraph titled "CONFIDENCE SCORE EXPLANATION" explaining precisely why the confidence score of ${result.confidence}% was assigned based on sensor coverage and cross-sensor validation.${groundedDirective}
 
 Synthesize these vectors into a single robust JSON payload conforming to the requested responseSchema. Do not truncate.`;
 }

@@ -20,6 +20,23 @@ export class GithubConnector implements Connector {
     const evidences: Evidence[] = [];
     const sources: string[] = [];
 
+    const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(searchTerm) || /^(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4}$/.test(searchTerm);
+    if (isIp) {
+      return {
+        connectorName: this.name,
+        success: true,
+        status: "NO_DATA",
+        verified: false,
+        timestamp,
+        entities: [],
+        relationships: [],
+        timeline: [],
+        evidences: [],
+        sources: [],
+        rawData: {}
+      };
+    }
+
     const cleanName = searchTerm.toLowerCase().replace(/[^a-z0-9]/g, "-");
     const orgName = cleanName || "sentinel-labs";
     const repoName = `${orgName}-core`;
@@ -107,6 +124,7 @@ export class GithubConnector implements Connector {
         openIssues: 3,
         activeBranches: ["main", "dev-v2"]
       },
+      verified: false,
       source: "GitHub GraphQL API",
       strength: 0.9,
       url: `https://github.com/${orgName}/${repoName}`
@@ -118,6 +136,8 @@ export class GithubConnector implements Connector {
     return {
       connectorName: this.name,
       success: true,
+      status: "SUCCESS",
+      verified: false,
       timestamp,
       entities,
       relationships,

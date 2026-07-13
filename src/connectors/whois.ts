@@ -69,6 +69,25 @@ export class WhoisConnector implements Connector {
     let isIp = this.isIpAddress(searchTerm);
     let targetDomainOrIp = searchTerm;
 
+    const isDomainOrIp = query.type === "Domain" || query.type === "IPAddress" ||
+                         isIp || (queryLower.includes(".") && !queryLower.includes(" "));
+    
+    if (!isDomainOrIp) {
+      return {
+        connectorName: this.name,
+        success: true,
+        status: "NO_DATA",
+        verified: true,
+        timestamp,
+        entities: [],
+        relationships: [],
+        timeline: [],
+        evidences: [],
+        sources: [],
+        rawData: { info: "WHOIS lookup skipped for non-network target." }
+      };
+    }
+
     if (isIp) {
       targetDomainOrIp = queryLower;
     } else if (query.type === "Domain" || (queryLower.includes(".") && !queryLower.includes(" "))) {
@@ -175,6 +194,7 @@ export class WhoisConnector implements Connector {
             country: parsed.registrantCountry,
             rawWhoisOutput: rawOutput.substring(0, 1500)
           },
+          verified: true,
           source: parsed.registrar || "IANA Central WHOIS Service",
           strength: confidence / 100,
           url: `whois://whois.iana.org/ip/${targetDomainOrIp}`
@@ -272,6 +292,7 @@ export class WhoisConnector implements Connector {
             expires: parsed.expirationDate,
             nameServers: parsed.nameServers,
           },
+          verified: true,
           source: parsed.registrar || "IANA Central WHOIS Service",
           strength: confidence / 100,
           url: `whois://whois.iana.org/domain/${resolvedDomain}`
@@ -281,6 +302,8 @@ export class WhoisConnector implements Connector {
       const result: ConnectorResult = {
         connectorName: this.name,
         success: true,
+        status: "SUCCESS",
+        verified: true,
         timestamp,
         entities,
         relationships,
@@ -308,6 +331,8 @@ export class WhoisConnector implements Connector {
       const fallbackResult: ConnectorResult = {
         connectorName: this.name,
         success: true, // Maintain pipeline connectivity
+        status: "ERROR",
+        verified: true,
         timestamp,
         entities: [
           {
@@ -337,6 +362,7 @@ export class WhoisConnector implements Connector {
               error: error.message,
               reason: "TCP socket timeout/refusal or registry down"
             },
+            verified: true,
             source: "IANA Central WHOIS Service (Local Mirror)",
             strength: 0.15,
             url: `whois://whois.iana.org/domain/${fallbackDomain}`

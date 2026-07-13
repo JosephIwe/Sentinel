@@ -164,6 +164,8 @@ export class GithubIntelligenceConnector implements Connector {
       return {
         connectorName: this.name,
         success: false,
+        status: "ERROR",
+        verified: true,
         timestamp,
         entities: [],
         relationships: [],
@@ -401,7 +403,8 @@ export class GithubIntelligenceConnector implements Connector {
         description: `Discovered GitHub profile for "${owner}" (${orgData.type || "User"}) with ${orgData.public_repos} public repositories and ${orgData.followers} followers. Established public identity footprint created on ${new Date(orgData.created_at).toLocaleDateString()}.`,
         confidence: 99,
         timestamp,
-        rawData: orgData
+        rawData: orgData,
+        verified: true
       });
     }
 
@@ -416,7 +419,8 @@ export class GithubIntelligenceConnector implements Connector {
         rawData: {
           ...repoData,
           languages: languagesData
-        }
+        },
+        verified: true
       });
 
       evidences.push({
@@ -431,7 +435,8 @@ export class GithubIntelligenceConnector implements Connector {
           dependabotExists,
           codeScanningActive,
           securityScore
-        }
+        },
+        verified: true
       });
 
       evidences.push({
@@ -455,7 +460,8 @@ export class GithubIntelligenceConnector implements Connector {
           })),
           contributorCount,
           activityScore
-        }
+        },
+        verified: true
       });
 
       // Populate Timeline events
@@ -515,9 +521,14 @@ export class GithubIntelligenceConnector implements Connector {
       }
     };
 
+    const hasData = !!(repoData || orgData);
+    const status = hasData ? "SUCCESS" : "NO_DATA";
+
     const result: ConnectorResult = {
       connectorName: this.name,
       success: true,
+      status,
+      verified: true,
       timestamp,
       entities,
       relationships,

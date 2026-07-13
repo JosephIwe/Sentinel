@@ -80,6 +80,7 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
   // Investigate Panel States
   const [type, setType] = useState<string>("domain");
   const [value, setValue] = useState<string>("");
+  const [grounded, setGrounded] = useState<boolean>(false);
   
   // Tab-specific State
   const [activeTab, setActiveTab] = useState<string>("overview");
@@ -176,7 +177,10 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
         },
         body: JSON.stringify({
           type: type.trim().toLowerCase(),
-          value: value.trim()
+          value: value.trim(),
+          options: {
+            grounded: grounded
+          }
         })
       });
 
@@ -341,6 +345,27 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
                     <Search className="w-3.5 h-3.5 text-neutral-600" />
                   </div>
                 </div>
+              </div>
+
+              {/* Grounded Response Mode Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-neutral-950 border border-neutral-800 rounded-lg">
+                <div className="space-y-0.5">
+                  <span className="block text-[11px] font-bold text-neutral-300 font-mono uppercase tracking-wider">
+                    Grounded Response Mode
+                  </span>
+                  <span className="block text-[9px] text-neutral-500 leading-normal font-sans">
+                    Cites evidence IDs. Automatically removes unreferenced statements.
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={grounded}
+                    onChange={(e) => setGrounded(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-neutral-400 peer-checked:after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
               </div>
 
               {/* Client-Side Validation Warning */}

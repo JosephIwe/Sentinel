@@ -75,6 +75,7 @@ export class GoogleConnector implements Connector {
           crawlFrequency: "daily",
           cacheStatus: "fresh"
         },
+        verified: false,
         source: "Google Search Console",
         strength: 0.9,
         url: `https://www.google.com/search?q=site%3A${domain}`
@@ -132,6 +133,7 @@ export class GoogleConnector implements Connector {
           socialReferences: ["LinkedIn Profile Node"],
           knowledgeGraphId: "kg:/g/11s_brand_match"
         },
+        verified: false,
         source: "Google Knowledge Graph API",
         strength: 0.85,
         url: `https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`
@@ -140,9 +142,13 @@ export class GoogleConnector implements Connector {
       sources.push(`https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`);
     }
 
+    const status = searchTerm && searchTerm.trim().length > 0 ? "SUCCESS" : "NO_DATA";
+
     return {
       connectorName: this.name,
       success: true,
+      status,
+      verified: false,
       timestamp,
       entities,
       relationships,

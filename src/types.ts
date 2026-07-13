@@ -63,6 +63,7 @@ export interface Evidence {
   confidence: number; // percentage (0-100) or score
   timestamp: string;
   rawData: any;
+  verified?: boolean;
   source?: string; // backward compatibility
   strength?: number; // backward compatibility
   url?: string; // backward compatibility
@@ -94,6 +95,8 @@ export interface TimelineEvent {
 export interface ConnectorResult {
   connectorName: string;
   success: boolean;
+  status: "SUCCESS" | "NO_DATA" | "ERROR" | "TIMEOUT";
+  verified: boolean;
   timestamp: string;
   entities: Entity[];
   relationships: Relationship[];
@@ -119,6 +122,14 @@ export interface CanonicalEntity {
   relationships: Relationship[];
 }
 
+export interface ConnectorStatusInfo {
+  name: string;
+  status: "SUCCESS" | "NO_DATA" | "ERROR" | "TIMEOUT";
+  error?: string;
+  evidenceCount: number;
+  executionTimeMs?: number;
+}
+
 export interface InvestigationResult {
   query: InvestigationQuery;
   summary: string;
@@ -129,12 +140,32 @@ export interface InvestigationResult {
   confidence: number; // 0.0 to 1.0 (or percentage)
   sources: string[];
   canonicalEntities?: CanonicalEntity[];
+  connectorStatuses?: ConnectorStatusInfo[];
+  performance?: {
+    totalTimeMs: number;
+    connectorTimesMs: Record<string, number>;
+    cacheHits: number;
+    cacheMisses: number;
+    timeoutCount: number;
+    aiSummaryTimeMs?: number;
+  };
 }
 
 export interface IntelligenceFinding {
   statement: string;
   type: "Verified Finding" | "AI Assessment";
   evidenceIds: string[];
+}
+
+export interface ValidationReport {
+  validationScore: number;
+  verifiedStatementsCount: number;
+  removedStatementsCount: number;
+  evidenceCoverage: number;
+  verifiedStatements: string[];
+  removedHallucinations: string[];
+  unsupportedClaims: string[];
+  confidenceAdjustment: number;
 }
 
 export interface IntelligenceReport {
@@ -148,6 +179,7 @@ export interface IntelligenceReport {
   timeline: TimelineEvent[];
   confidenceBreakdown?: ScoreBreakdown;
   riskBreakdown?: ScoreBreakdown;
+  validationReport?: ValidationReport;
 }
 
 export interface RuleEvaluation {
@@ -178,5 +210,6 @@ export interface InvestigationJob {
   error?: string;
   resultId?: string;
   report?: any;
+  options?: Record<string, any>;
 }
 

@@ -20,6 +20,23 @@ export class NewsConnector implements Connector {
     const evidences: Evidence[] = [];
     const sources: string[] = [];
 
+    const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(searchTerm) || /^(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4}$/.test(searchTerm);
+    if (isIp) {
+      return {
+        connectorName: this.name,
+        success: true,
+        status: "NO_DATA",
+        verified: false,
+        timestamp,
+        entities: [],
+        relationships: [],
+        timeline: [],
+        evidences: [],
+        sources: [],
+        rawData: {}
+      };
+    }
+
     const targetName = searchTerm.trim();
 
     entities.push({
@@ -83,6 +100,7 @@ export class NewsConnector implements Connector {
         sentiment: "Highly Positive",
         author: "Tech Press Syndicate"
       },
+      verified: false,
       source: "TechCrunch Publications",
       strength: 0.8,
       url: `https://techcrunch.com/search/${encodeURIComponent(searchTerm)}`
@@ -94,6 +112,8 @@ export class NewsConnector implements Connector {
     return {
       connectorName: this.name,
       success: true,
+      status: "SUCCESS",
+      verified: false,
       timestamp,
       entities,
       relationships,

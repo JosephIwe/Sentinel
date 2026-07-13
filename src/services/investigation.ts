@@ -1,4 +1,4 @@
-import { Connector, InvestigationResult, Entity, Relationship, TimelineEvent, Evidence, InvestigationQuery, ConnectorResult } from "../types";
+import { Connector, InvestigationResult, Entity, Relationship, TimelineEvent, Evidence, InvestigationQuery, ConnectorResult, ConnectorStatusInfo } from "../types";
 import { EntityResolutionService } from "./entityResolution";
 import { withRetry, withTimeout, CircuitBreakerRegistry } from "../utils/reliability";
 import { logger } from "../utils/logger";
@@ -9,9 +9,33 @@ import { logger } from "../utils/logger";
  * Implements Dependency Injection to easily register and manage connector providers.
  * Runs queries asynchronously in parallel, robustly isolates partial failures,
  * merges/normalizes overlapping entities, maps credentials, and synthesizes overall graph metadata.
+ * Now optimized with parallel execution, configurable timeouts, cache warming, and performance telemetry.
  */
 export class InvestigationService {
   private connectors: Connector[];
+
+  // In-memory static cache for full investigation reports (duplicate detection)
+  private static investigationCache = new Map<string, { result: InvestigationResult; timestamp: number }>();
+
+  // In-memory static cache for individual connector results (reusing cached evidence)
+  private static connectorCache = new Map<string, { result: ConnectorResult; timestamp: number }>();
+
+  private static readonly MAX_CACHE_ENTRIES = 500;
+
+  /**
+   * Inserts into a bounded cache Map. If the map is at capacity, evicts the
+   * oldest inserted entry first (simple FIFO bound, not true LRU) to keep
+   * memory usage capped regardless of how many distinct queries are run.
+   */
+  private static setBounded<K, V>(map: Map<K, V>, key: K, value: V): void {
+    if (map.size >= InvestigationService.MAX_CACHE_ENTRIES && !map.has(key)) {
+      const oldestKey = map.keys().next().value;
+      if (oldestKey !== undefined) {
+        map.delete(oldestKey);
+      }
+    }
+    map.set(key, value);
+  }
 
   /**
    * Instantiates the Investigation Service via Dependency Injection.
@@ -25,19 +49,133 @@ export class InvestigationService {
   }
 
   /**
+   * Retrieves the connectors count.
+   */
+  public getConnectorsCount(): number {
+    return this.connectors.length;
+  }
+
+  /**
+   * Helper to retrieve GITHUB_CACHE_TTL_MS, WHOIS_CACHE_TTL_MS, DNS_CACHE_TTL_MS etc.
+   */
+  private getCacheTtlForConnector(connectorName: string): number {
+    if (connectorName.toLowerCase().includes("whois")) {
+      const envTtl = process.env.WHOIS_CACHE_TTL_MS;
+      if (envTtl) {
+        const parsed = parseInt(envTtl, 10);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
+      }
+      return 60 * 60 * 1000; // Default: 1 hour
+    }
+    if (connectorName.toLowerCase().includes("dns") || connectorName.toLowerCase().includes("system")) {
+      const envTtl = process.env.DNS_CACHE_TTL_MS;
+      if (envTtl) {
+        const parsed = parseInt(envTtl, 10);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
+      }
+      return 5 * 60 * 1000; // Default: 5 minutes
+    }
+    if (connectorName.toLowerCase().includes("github")) {
+      const envTtl = process.env.GITHUB_CACHE_TTL_MS;
+      if (envTtl) {
+        const parsed = parseInt(envTtl, 10);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
+      }
+      return 60 * 60 * 1000; // Default: 1 hour
+    }
+    // Google, News
+    return 10 * 60 * 1000; // Default: 10 minutes
+  }
+
+  /**
+   * Retrieves configurable timeout limit for each connector.
+   */
+  private getTimeoutForConnector(connectorName: string): number {
+    let envVarName = "";
+    const nameLower = connectorName.toLowerCase();
+    if (nameLower.includes("whois")) envVarName = "WHOIS_TIMEOUT_MS";
+    else if (nameLower.includes("dns") || nameLower.includes("system")) envVarName = "DNS_TIMEOUT_MS";
+    else if (nameLower.includes("github intelligence")) envVarName = "GITHUB_INTEL_TIMEOUT_MS";
+    else if (nameLower.includes("github")) envVarName = "GITHUB_TIMEOUT_MS";
+    else if (nameLower.includes("google")) envVarName = "GOOGLE_TIMEOUT_MS";
+    else if (nameLower.includes("news")) envVarName = "NEWS_TIMEOUT_MS";
+
+    if (envVarName && process.env[envVarName]) {
+      const parsed = parseInt(process.env[envVarName]!, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return 5000; // Default: 5 seconds timeout
+  }
+
+
+
+  /**
    * Orchestrates high-throughput parallel checks across all registered providers,
    * aggregating, normalizing, and calculating final score dimensions.
+   * Supports incremental completion callback for updating progressive job percentage.
    * 
    * @param query - Structured query object containing search term and options
+   * @param onConnectorCompleted - Optional progressive update callback
    */
-  public async investigate(query: InvestigationQuery): Promise<InvestigationResult> {
+  public async investigate(
+    query: InvestigationQuery,
+    onConnectorCompleted?: (connectorName: string, result: ConnectorResult, elapsedMs: number) => void
+  ): Promise<InvestigationResult> {
     const startTime = Date.now();
+    const term = query.term.trim();
+    const queryLower = term.toLowerCase();
+
+    // 0. Deduplicate: Return cached result for identical full investigations
+    const connectorKey = this.connectors.map(c => c.name).sort().join(",");
+    const fullCacheKey = `${query.type || "Generic"}:${queryLower}:${JSON.stringify(query.options || {})}:${connectorKey}`;
+    const cachedFullResult = InvestigationService.investigationCache.get(fullCacheKey);
+    const fullTtl = process.env.INVESTIGATION_CACHE_TTL_MS ? parseInt(process.env.INVESTIGATION_CACHE_TTL_MS, 10) : 5 * 60 * 1000; // 5 mins
+
+    if (cachedFullResult && (Date.now() - cachedFullResult.timestamp < fullTtl)) {
+      console.log(`[INTELLIGENT CACHE HIT] Reusing fully cached investigation for "${term}"`);
+      // Update the totalTimeMs in the cached performance report to show actual retrieved speed (0ms of fresh querying)
+      const freshResult = { ...cachedFullResult.result };
+      if (freshResult.performance) {
+        freshResult.performance = {
+          ...freshResult.performance,
+          totalTimeMs: Date.now() - startTime
+        };
+      }
+      return freshResult;
+    }
+
+    let cacheHits = 0;
+    let cacheMisses = 0;
+    let timeoutCount = 0;
+    const connectorTimesMs: Record<string, number> = {};
 
     // 1. Run all connectors in parallel using concurrent workers
     // We use Promise.allSettled to ensure that a complete failure in one connector
     // (e.g., WHOIS server downtime) does not crash the entire investigation.
-    // Each connector is hardened with: timeout, retries, circuit breaker, and performance latency profiling.
+    // Each connector is hardened with: configurable timeout, retries, circuit breaker, and caching.
     const runPromises = this.connectors.map(async (connector) => {
+      const connectorStartTime = Date.now();
+
+
+
+      // Check connector cache (Intelligent Caching)
+      const connCacheKey = `${connector.name}:${query.type || "Generic"}:${queryLower}`;
+      const cachedConnector = InvestigationService.connectorCache.get(connCacheKey);
+      const connTtl = this.getCacheTtlForConnector(connector.name);
+
+      if (cachedConnector && (Date.now() - cachedConnector.timestamp < connTtl)) {
+        cacheHits++;
+        const elapsed = Date.now() - connectorStartTime;
+        connectorTimesMs[connector.name] = elapsed;
+        console.log(`[CONNECTOR CACHE HIT] "${connector.name}" retrieved from cache for "${term}"`);
+        if (onConnectorCompleted) {
+          onConnectorCompleted(connector.name, cachedConnector.result, elapsed);
+        }
+        return cachedConnector.result;
+      }
+
+      cacheMisses++;
+      const timeoutMs = this.getTimeoutForConnector(connector.name);
       const breaker = CircuitBreakerRegistry.getBreaker(connector.name, 3, 15000);
       
       const executeWithResilience = async () => {
@@ -49,48 +187,99 @@ export class InvestigationService {
               },
               { maxRetries: 2, delayMs: 400, name: connector.name }
             ),
-            6000,
+            timeoutMs,
             connector.name
           );
         });
       };
 
+      let resultValue: ConnectorResult;
+
       try {
-        return await logger.profile(
+        resultValue = await logger.profile(
           `Connector:${connector.name}`,
           executeWithResilience,
           3000,
           { query }
         );
+
+        // Save to cache only if status is not ERROR (Never cache errors)
+        if (resultValue.status === "SUCCESS" || resultValue.status === "NO_DATA") {
+          InvestigationService.setBounded(InvestigationService.connectorCache, connCacheKey, {
+            result: resultValue,
+            timestamp: Date.now()
+          });
+        }
       } catch (err: any) {
-        logger.error(`Connector failed resiliently [${connector.name}]: ${err.message}`, {
-          connector: connector.name,
-          error: err.message,
-          query
-        });
+        const isTimeout = err.message?.toLowerCase().includes("timeout") || err.message?.toLowerCase().includes("deadline");
         
-        return {
-          connectorName: connector.name,
-          success: false,
-          timestamp: new Date().toISOString(),
-          entities: [],
-          relationships: [],
-          timeline: [],
-          evidences: [
-            {
-              id: `ev_${connector.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_failure`,
-              connector: connector.name,
-              title: `${connector.name} Failure Fallback`,
-              description: `The ${connector.name} connector failed resiliently: ${err.message}. Returning graceful fallback.`,
-              confidence: 0,
-              timestamp: new Date().toISOString(),
-              rawData: { error: err.message }
-            }
-          ],
-          sources: [],
-          error: err.message || "Execution failed",
-        } as ConnectorResult;
+        if (isTimeout) {
+          timeoutCount++;
+          resultValue = {
+            connectorName: connector.name,
+            success: false,
+            status: "TIMEOUT",
+            verified: true,
+            timestamp: new Date().toISOString(),
+            entities: [],
+            relationships: [],
+            timeline: [],
+            evidences: [
+              {
+                id: `ev_${connector.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_timeout`,
+                connector: connector.name,
+                title: `${connector.name} Query Timeout`,
+                description: `The ${connector.name} connector reached its configurable timeout limit (${timeoutMs}ms) and was halted to preserve overall responsiveness.`,
+                confidence: 0,
+                timestamp: new Date().toISOString(),
+                rawData: { error: err.message }
+              }
+            ],
+            sources: [],
+            error: `Timeout of ${timeoutMs}ms exceeded.`
+          };
+          logger.warn(`Connector timed out [${connector.name}]: ${err.message}`);
+        } else {
+          logger.error(`Connector failed resiliently [${connector.name}]: ${err.message}`, {
+            connector: connector.name,
+            error: err.message,
+            query
+          });
+          
+          resultValue = {
+            connectorName: connector.name,
+            success: false,
+            status: "ERROR",
+            verified: true,
+            timestamp: new Date().toISOString(),
+            entities: [],
+            relationships: [],
+            timeline: [],
+            evidences: [
+              {
+                id: `ev_${connector.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_failure`,
+                connector: connector.name,
+                title: `${connector.name} Failure Fallback`,
+                description: `The ${connector.name} connector failed resiliently: ${err.message}. Returning graceful fallback.`,
+                confidence: 0,
+                timestamp: new Date().toISOString(),
+                rawData: { error: err.message }
+              }
+            ],
+            sources: [],
+            error: err.message || "Execution failed",
+          };
+        }
       }
+
+      const elapsed = Date.now() - connectorStartTime;
+      connectorTimesMs[connector.name] = elapsed;
+
+      if (onConnectorCompleted) {
+        onConnectorCompleted(connector.name, resultValue, elapsed);
+      }
+
+      return resultValue;
     });
 
     const settledResults = await Promise.allSettled(runPromises);
@@ -102,27 +291,45 @@ export class InvestigationService {
     const rawEvidences: Evidence[] = [];
     const rawSources: string[] = [];
     let successfulConnectorCount = 0;
+    const connectorStatuses: ConnectorStatusInfo[] = [];
 
     settledResults.forEach((result) => {
       if (result.status === "fulfilled") {
         const value = result.value;
-        if (value.success) {
+        const status = value.status || (value.success ? "SUCCESS" : "ERROR");
+        
+        connectorStatuses.push({
+          name: value.connectorName,
+          status,
+          error: value.error,
+          evidenceCount: status === "SUCCESS" ? (value.evidences?.length || 0) : 0,
+          executionTimeMs: connectorTimesMs[value.connectorName] ?? 0
+        });
+
+        if (status === "SUCCESS") {
           successfulConnectorCount++;
           rawEntities.push(...value.entities);
           rawRelationships.push(...value.relationships);
           rawTimeline.push(...value.timeline);
           rawEvidences.push(...(value.evidences || []));
           rawSources.push(...value.sources);
-        } else {
-          // Aggregate fallback evidences for partially failing or circuit-broken connectors
+        } else if (status === "ERROR" || status === "TIMEOUT") {
+          // Include error/timeout fallback evidence only, no entities/relations
           rawEvidences.push(...(value.evidences || []));
+        } else if (status === "NO_DATA") {
+          // NO_DATA: Strictly do not allow AI to infer from this connector.
         }
+      } else {
+        connectorStatuses.push({
+          name: "Unknown Connector",
+          status: "ERROR",
+          error: "Promise rejected",
+          evidenceCount: 0
+        });
       }
     });
 
     // 2. Normalize and merge duplicate entities
-    // Entities may be detected by multiple connectors (e.g. domain.com detected by Google, DNS, and WHOIS).
-    // We map duplicates using a canonical key: lowercase trimmed entity name + normalized entity type.
     const mergedEntitiesMap = new Map<string, Entity>();
     const idTranslationMap = new Map<string, string>(); // Original entity ID -> Merged canonical ID
 
@@ -131,7 +338,6 @@ export class InvestigationService {
       const evidenceIds = ent.evidenceIds || [];
       
       if (mergedEntitiesMap.has(canonicalKey)) {
-        // Merge metadata intelligently
         const existing = mergedEntitiesMap.get(canonicalKey)!;
         existing.metadata = {
           ...existing.metadata,
@@ -139,10 +345,8 @@ export class InvestigationService {
           mergedFrom: Array.from(new Set([...(existing.metadata.mergedFrom || []), ent.id]))
         };
         existing.evidenceIds = Array.from(new Set([...(existing.evidenceIds || []), ...evidenceIds]));
-        // Log translation from this duplicate entity ID to the canonical one
         idTranslationMap.set(ent.id, existing.id);
       } else {
-        // First time seeing this entity. Establish as canonical.
         mergedEntitiesMap.set(canonicalKey, { ...ent, evidenceIds: [...evidenceIds] });
         idTranslationMap.set(ent.id, ent.id);
       }
@@ -151,15 +355,12 @@ export class InvestigationService {
     const entities = Array.from(mergedEntitiesMap.values());
 
     // 3. Normalize and link relationships
-    // Replace relationship source and target identifiers with canonical entity IDs.
-    // Ensure we don't return duplicates or self-referential relations.
     const relationshipMap = new Map<string, Relationship>();
 
     rawRelationships.forEach((rel) => {
       const canonicalSource = idTranslationMap.get(rel.source) || rel.source;
       const canonicalTarget = idTranslationMap.get(rel.target) || rel.target;
 
-      // Prevent self-referential relations
       if (canonicalSource === canonicalTarget) return;
 
       const relKey = `${canonicalSource}->${rel.type}->${canonicalTarget}`;
@@ -190,7 +391,7 @@ export class InvestigationService {
     // 5. Deduplicate evidences
     const evidencesMap = new Map<string, Evidence>();
     rawEvidences.forEach((ev) => {
-      const key = ev.id || `${ev.source}:${ev.description.substring(0, 30)}`;
+      const key = ev.id || `${ev.source || ev.connector}:${ev.description.substring(0, 30)}`;
       if (!evidencesMap.has(key)) {
         evidencesMap.set(key, ev);
       }
@@ -201,22 +402,20 @@ export class InvestigationService {
     const sources = Array.from(new Set(rawSources));
 
     // 7. Calculate Confidence Score
-    // Confidence is an analytical result derived from signal cross-validation.
-    // Higher volume of synchronized connectors, dense network maps, and verified domains boost confidence.
-    const baseConfidence = (successfulConnectorCount / this.connectors.length) * 60;
+    const baseConfidence = (successfulConnectorCount / Math.max(1, this.connectors.length)) * 60;
     const entityDensityBonus = Math.min(25, entities.length * 3);
     const connectionDensityBonus = Math.min(15, relationships.length * 2);
     const confidence = Math.min(100, Math.round(baseConfidence + entityDensityBonus + connectionDensityBonus));
 
     // 8. Synthesize Summary
-    const durationMs = Date.now() - startTime;
-    const summary = `Investigation completed in ${durationMs}ms across ${successfulConnectorCount}/${this.connectors.length} active sensor feeds. Detected ${entities.length} primary entities linked by ${relationships.length} validated context paths. Target footprint exhibits a confidence score of ${confidence}% centered around "${query.term}".`;
+    const totalTimeMs = Date.now() - startTime;
+    const summary = `Investigation completed in ${totalTimeMs}ms across ${successfulConnectorCount}/${this.connectors.length} active sensor feeds. Detected ${entities.length} primary entities linked by ${relationships.length} validated context paths. Target footprint exhibits a confidence score of ${confidence}% centered around "${query.term}".`;
 
     // 9. Run Entity Resolution Engine
     const entityResolutionService = new EntityResolutionService();
     const canonicalEntities = entityResolutionService.resolve(entities, evidences, relationships);
 
-    return {
+    const finalResult: InvestigationResult = {
       query,
       summary,
       entities,
@@ -226,6 +425,22 @@ export class InvestigationService {
       confidence,
       sources,
       canonicalEntities,
+      connectorStatuses,
+      performance: {
+        totalTimeMs,
+        connectorTimesMs,
+        cacheHits,
+        cacheMisses,
+        timeoutCount,
+      }
     };
+
+    // Store in cache for future duplicate investigations
+    InvestigationService.setBounded(InvestigationService.investigationCache, fullCacheKey, {
+      result: finalResult,
+      timestamp: Date.now()
+    });
+
+    return finalResult;
   }
 }

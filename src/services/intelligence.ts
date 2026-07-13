@@ -2,6 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { InvestigationResult, IntelligenceReport, TimelineEvent, IntelligenceFinding } from "../types";
 import { INTEL_SYSTEM_INSTRUCTION, generateIntelligencePrompt } from "./prompts/intelligencePrompt";
 import { ScoringService } from "./scoring";
+import { ValidationService } from "./validation";
 
 /**
  * AI Intelligence Service
@@ -30,11 +31,21 @@ export class IntelligenceService {
    * @param result - The output of the parallel investigation engine
    */
   public async analyze(result: InvestigationResult): Promise<IntelligenceReport> {
+    const validationService = new ValidationService();
+    const cleanedResult = validationService.preValidate(result);
+    
+    // Mutate the incoming result so that caller has the cleaned evidences and entities
+    result.evidences = cleanedResult.evidences;
+    result.entities = cleanedResult.entities;
+    result.relationships = cleanedResult.relationships;
+
     const aiClient = this.aiClient || this.getEnvAiClient();
 
     if (!aiClient) {
       console.warn("IntelligenceService: GEMINI_API_KEY not configured. Falling back to deterministic summary.");
-      return this.getDeterministicFallback(result);
+      const fallback = this.getDeterministicFallback(result);
+      const postValidationResult = validationService.postValidate(result, fallback);
+      return postValidationResult.report;
     }
 
     try {
@@ -148,14 +159,18 @@ export class IntelligenceService {
         parsed.confidenceBreakdown = confBreakdown;
         parsed.riskBreakdown = riskBreakdown;
 
-        return parsed;
+        // Run post-validation to catch and filter hallucinations and unsupported claims
+        const postValidationResult = validationService.postValidate(result, parsed);
+        return postValidationResult.report;
       }
 
       throw new Error("Parsed response did not match the required IntelligenceReport interface schema");
 
     } catch (err) {
       console.error("IntelligenceService: Gemini API invocation failed. Initiating deterministic fallback.", err);
-      return this.getDeterministicFallback(result);
+      const fallback = this.getDeterministicFallback(result);
+      const postValidationResult = validationService.postValidate(result, fallback);
+      return postValidationResult.report;
     }
   }
 

@@ -24,7 +24,7 @@ export class InvestigationWorker {
   /**
    * Spawns a new asynchronous investigation job
    */
-  public createJob(userId: string, type: string, query: string): InvestigationJob {
+  public createJob(userId: string, type: string, query: string, options?: Record<string, any>): InvestigationJob {
     const jobId = `job_inv_${Math.random().toString(36).substr(2, 9)}`;
     const job: InvestigationJob = {
       id: jobId,
@@ -33,7 +33,8 @@ export class InvestigationWorker {
       progress: 0,
       type: type,
       query: query,
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
+      options: options
     };
     
     this.jobs.set(jobId, job);
@@ -73,32 +74,46 @@ export class InvestigationWorker {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
+    const jobStartedAt = Date.now();
+
     try {
       // Stage 1: Spin up container/allocate resource
       job.status = "running";
       job.progress = 15;
-      await this.sleep(1200);
+      await this.sleep(50); // Minimal visual transition sleep instead of 1.2s blocking sleep
       
       if ((job.status as string) === "cancelled") return;
 
       // Stage 2: Parallel Connector Querying
-      job.progress = 45;
       const mappedType = this.mapTypeToQueryType(job.type);
       const query = {
         term: job.query.trim(),
         type: mappedType,
+        options: job.options,
       };
 
-      const investigationResult = await this.investigationService.investigate(query);
-      await this.sleep(800);
+      let completedConnectors = 0;
+      const totalConns = this.investigationService.getConnectorsCount() || 6;
+
+      const onConnectorCompleted = (connectorName: string, res: any, elapsedMs: number) => {
+        completedConnectors++;
+        // Dynamically scale progress from 15% to 65% as independent connectors resolve
+        const progressivePercent = Math.round(15 + (completedConnectors / totalConns) * 50);
+        job.progress = progressivePercent;
+      };
+
+      const investigationResult = await this.investigationService.investigate(query, onConnectorCompleted);
+      await this.sleep(50);
 
       if ((job.status as string) === "cancelled") return;
 
       // Stage 3: AI Cognitive Synthesis
       job.progress = 75;
+      const aiSummaryStart = Date.now();
       const intelligenceService = new IntelligenceService(this.aiClient);
       const intelligenceReport = await intelligenceService.analyze(investigationResult);
-      await this.sleep(600);
+      const aiSummaryTimeMs = Date.now() - aiSummaryStart;
+      await this.sleep(50);
 
       if ((job.status as string) === "cancelled") return;
 
@@ -120,6 +135,13 @@ export class InvestigationWorker {
         sources: investigationResult.sources,
         evidences: investigationResult.evidences,
         findings: intelligenceReport.findings || [],
+        validationReport: intelligenceReport.validationReport,
+        connectorStatuses: investigationResult.connectorStatuses,
+        performance: {
+          ...investigationResult.performance,
+          aiSummaryTimeMs,
+          totalTimeMs: Date.now() - jobStartedAt
+        }
       };
 
       job.status = "completed";

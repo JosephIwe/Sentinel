@@ -231,6 +231,7 @@ export class DnsConnector implements Connector {
         confidence: 98,
         timestamp,
         rawData: { A: results.A },
+        verified: true,
         source: "Recursive Nameserver API",
         strength: 0.98,
         url: `https://dns.google/resolve?name=${domain}&type=A`
@@ -272,6 +273,7 @@ export class DnsConnector implements Connector {
         confidence: 98,
         timestamp,
         rawData: { AAAA: results.AAAA },
+        verified: true,
         source: "Recursive Nameserver API",
         strength: 0.98,
         url: `https://dns.google/resolve?name=${domain}&type=AAAA`
@@ -313,6 +315,7 @@ export class DnsConnector implements Connector {
         confidence: 95,
         timestamp,
         rawData: { MX: results.MX },
+        verified: true,
         source: "Recursive Nameserver API",
         strength: 0.95,
         url: `https://dns.google/resolve?name=${domain}&type=MX`
@@ -355,6 +358,7 @@ export class DnsConnector implements Connector {
         confidence: 95,
         timestamp,
         rawData: { NS: results.NS },
+        verified: true,
         source: "Recursive Nameserver API",
         strength: 0.95,
         url: `https://dns.google/resolve?name=${domain}&type=NS`
@@ -396,6 +400,7 @@ export class DnsConnector implements Connector {
         confidence: 90,
         timestamp,
         rawData: { TXT: results.TXT },
+        verified: true,
         source: "Recursive Nameserver API",
         strength: 0.90,
         url: `https://dns.google/resolve?name=${domain}&type=TXT`
@@ -415,6 +420,7 @@ export class DnsConnector implements Connector {
         confidence: 95,
         timestamp,
         rawData: { CNAME: results.CNAME },
+        verified: true,
         source: "Recursive Nameserver API",
         strength: 0.95,
         url: `https://dns.google/resolve?name=${domain}&type=CNAME`
@@ -470,6 +476,7 @@ export class DnsConnector implements Connector {
         confidence: 30,
         timestamp,
         rawData: { error: "No records found" },
+        verified: true,
         source: "Recursive Nameserver API",
         strength: 0.30
       });
@@ -478,9 +485,14 @@ export class DnsConnector implements Connector {
     sources.push(`dns:${domain}?type=ANY`);
     sources.push(`https://dns.google/resolve?name=${domain}`);
 
+    const hasDnsRecords = evidenceIds.length > 0;
+    const status = hasDnsRecords ? "SUCCESS" : "NO_DATA";
+
     const connectorResult: ConnectorResult = {
       connectorName: this.name,
       success: true,
+      status,
+      verified: true,
       timestamp,
       entities,
       relationships,
