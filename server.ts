@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import crypto from "crypto";
 import { WhoisConnector } from "./src/connectors/whois";
 import { DnsConnector } from "./src/connectors/dns";
 import { GithubIntelligenceConnector } from "./src/connectors/github-intel";
@@ -147,14 +148,18 @@ let extractionJobs: any[] = [
   }
 ];
 
-// Helper to generate a secure random string resembling production-grade cryptographically secure tokens
-function generateSecret() {
-  const chars = "abcdef0123456789";
-  let token = "sn_live_";
-  for (let i = 0; i < 32; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
+// Generates a cryptographically secure API secret using Node's crypto module.
+function generateSecret(): string {
+  return "sn_live_" + crypto.randomBytes(16).toString("hex");
+}
+
+// Masks a secret for display in list/read responses. Only the create and
+// rotate endpoints should ever return the unmasked value, and only once.
+function maskSecret(secret: string): string {
+  if (!secret || secret.length <= 12) {
+    return "••••••••••••••••••••••••••••";
   }
-  return token;
+  return `${secret.substring(0, 12)}${"•".repeat(secret.length - 12)}`;
 }
 
 // ==========================================
@@ -293,11 +298,12 @@ apiV1Router.post("/auth/logout", (req, res) => {
 });
 
 // 2. API Key Management
-apiV1Router.get("/keys", (req, res) => {
-  res.json({ keys: apiKeys });
+apiV1Router.get("/keys", authenticateRequest, (req: any, res) => {
+  const maskedKeys = apiKeys.map(k => ({ ...k, secret: maskSecret(k.secret) }));
+  res.json({ keys: maskedKeys });
 });
 
-apiV1Router.post("/keys", (req, res) => {
+apiV1Router.post("/keys", authenticateRequest, (req: any, res) => {
   const { name, rateLimit } = req.body;
   if (!name) {
     return res.status(400).json({ error: "Key name is required" });
@@ -316,17 +322,17 @@ apiV1Router.post("/keys", (req, res) => {
   res.json({ key: newKey });
 });
 
-apiV1Router.put("/keys/:id/revoke", (req, res) => {
+apiV1Router.put("/keys/:id/revoke", authenticateRequest, (req: any, res) => {
   const { id } = req.params;
   const keyIndex = apiKeys.findIndex(k => k.id === id);
   if (keyIndex === -1) {
     return res.status(404).json({ error: "API Key not found" });
   }
   apiKeys[keyIndex].status = "revoked";
-  res.json({ key: apiKeys[keyIndex] });
+  res.json({ key: { ...apiKeys[keyIndex], secret: maskSecret(apiKeys[keyIndex].secret) } });
 });
 
-apiV1Router.post("/keys/:id/rotate", (req, res) => {
+apiV1Router.post("/keys/:id/rotate", authenticateRequest, (req: any, res) => {
   const { id } = req.params;
   const keyIndex = apiKeys.findIndex(k => k.id === id);
   if (keyIndex === -1) {
@@ -338,12 +344,12 @@ apiV1Router.post("/keys/:id/rotate", (req, res) => {
 });
 
 // 3. Extraction Jobs
-apiV1Router.get("/jobs", (req, res) => {
+apiV1Router.get("/jobs", authenticateRequest, (req: any, res) => {
   res.json({ jobs: extractionJobs });
 });
 
 // 4. Centerpiece: Gemini AI Transform Proxy
-apiV1Router.post("/playground/transform", async (req, res) => {
+apiV1Router.post("/playground/transform", authenticateRequest, async (req: any, res) => {
   const { url, rawText, schemaType, schemaFields } = req.body;
 
   if (!url && !rawText) {
@@ -500,7 +506,7 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
 });
 
 // 5. Statistics Metrics Overview
-apiV1Router.get("/metrics", (req, res) => {
+apiV1Router.get("/metrics", authenticateRequest, (req: any, res) => {
   const activeKeysCount = apiKeys.filter(k => k.status === "active").length;
   const totalReq = apiKeys.reduce((acc, k) => acc + k.requestCount, 0);
   res.json({
@@ -700,7 +706,7 @@ apiV1Router.post("/investigations", authenticateRequest, (req: any, res) => {
   });
 });
 
-apiV1Router.get("/investigations/:jobId", (req, res) => {
+apiV1Router.get("/investigations/:jobId", authenticateRequest, (req: any, res) => {
   const { jobId } = req.params;
   const job = investigationWorker.getJob(jobId);
 
@@ -818,7 +824,7 @@ apiV1Router.post("/investigate", authenticateRequest, async (req: any, res) => {
   }
 });
 
-apiV1Router.post("/intelligence/analyze", async (req, res) => {
+apiV1Router.post("/intelligence/analyze", authenticateRequest, async (req: any, res) => {
   const { result } = req.body;
   if (!result || !result.query || !result.entities) {
     return res.status(400).json({ error: "Valid InvestigationResult is required for analysis" });
