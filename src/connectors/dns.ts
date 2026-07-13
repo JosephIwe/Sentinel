@@ -137,7 +137,9 @@ export class DnsConnector implements Connector {
       try {
         results.A = await this.withTimeout(dns.resolve4(domain));
       } catch (err: any) {
-        console.warn(`[DNS] Failed A resolution for ${domain}: ${err.message}`);
+        if (err.code !== "ENODATA" && err.code !== "ENOTFOUND") {
+          console.warn(`[DNS] Failed A resolution for ${domain}: ${err.message}`);
+        }
       }
     };
 
@@ -145,7 +147,9 @@ export class DnsConnector implements Connector {
       try {
         results.AAAA = await this.withTimeout(dns.resolve6(domain));
       } catch (err: any) {
-        console.warn(`[DNS] Failed AAAA resolution for ${domain}: ${err.message}`);
+        if (err.code !== "ENODATA" && err.code !== "ENOTFOUND") {
+          console.warn(`[DNS] Failed AAAA resolution for ${domain}: ${err.message}`);
+        }
       }
     };
 
@@ -157,7 +161,9 @@ export class DnsConnector implements Connector {
           priority: item.priority
         }));
       } catch (err: any) {
-        console.warn(`[DNS] Failed MX resolution for ${domain}: ${err.message}`);
+        if (err.code !== "ENODATA" && err.code !== "ENOTFOUND") {
+          console.warn(`[DNS] Failed MX resolution for ${domain}: ${err.message}`);
+        }
       }
     };
 
@@ -165,7 +171,9 @@ export class DnsConnector implements Connector {
       try {
         results.NS = await this.withTimeout(dns.resolveNs(domain));
       } catch (err: any) {
-        console.warn(`[DNS] Failed NS resolution for ${domain}: ${err.message}`);
+        if (err.code !== "ENODATA" && err.code !== "ENOTFOUND") {
+          console.warn(`[DNS] Failed NS resolution for ${domain}: ${err.message}`);
+        }
       }
     };
 
@@ -174,7 +182,9 @@ export class DnsConnector implements Connector {
         const rawTxt = await this.withTimeout(dns.resolveTxt(domain));
         results.TXT = rawTxt.map(chunkArray => chunkArray.join(""));
       } catch (err: any) {
-        console.warn(`[DNS] Failed TXT resolution for ${domain}: ${err.message}`);
+        if (err.code !== "ENODATA" && err.code !== "ENOTFOUND") {
+          console.warn(`[DNS] Failed TXT resolution for ${domain}: ${err.message}`);
+        }
       }
     };
 
@@ -183,7 +193,9 @@ export class DnsConnector implements Connector {
         results.CNAME = await this.withTimeout(dns.resolveCname(domain));
       } catch (err: any) {
         // CNAME lookup failure is extremely common on apex domains (e.g. google.com has no CNAME). This is normal.
-        console.log(`[DNS] Failed CNAME resolution for ${domain}: ${err.message}`);
+        if (err.code !== "ENODATA" && err.code !== "ENOTFOUND") {
+          console.log(`[DNS] Failed CNAME resolution for ${domain}: ${err.message}`);
+        }
       }
     };
 
