@@ -3,23 +3,24 @@ import {
   Shield, FileText, AlertTriangle, CheckSquare, Globe, Calendar, Network, 
   Cpu, Copy, Check, Printer, ExternalLink, ShieldAlert, Info, ArrowRight,
   Eye, EyeOff, Lock, GitBranch, GitCommit, GitFork, Star, Users, Code2, ShieldCheck,
-  Activity, Zap
+  Activity, Zap, List
 } from "lucide-react";
+import EntityGraph from "./EntityGraph";
+import { Entity, Relationship } from "../types";
 
 interface EntityNode {
   id: string;
   name: string;
   type: string;
-  details?: string;
-  confidence: number;
+  metadata?: Record<string, any>;
   evidenceIds?: string[];
 }
 
 interface RelationshipEdge {
-  from: string;
-  to: string;
+  source: string;
+  target: string;
   type: string;
-  description?: string;
+  metadata?: Record<string, any>;
   evidenceIds?: string[];
 }
 
@@ -181,6 +182,7 @@ export default function InvestigationReport({ response, targetType, targetQuery 
   const [copiedJson, setCopiedJson] = useState<boolean>(false);
   const [copiedApi, setCopiedApi] = useState<boolean>(false);
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
+  const [entityViewMode, setEntityViewMode] = useState<"list" | "graph">("list");
 
   // Dynamic deterministic risk calculation based on keywords and metadata signals
   const calculateRiskDetails = () => {
@@ -1050,7 +1052,42 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                 </div>
               )}
 
+              {response.entities && response.entities.length > 0 && (
+                <div className="flex items-center justify-end gap-1.5 -mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setEntityViewMode("list")}
+                    aria-pressed={entityViewMode === "list"}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-mono uppercase font-bold border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus:outline-none ${
+                      entityViewMode === "list"
+                        ? "bg-blue-950 border-blue-800 text-blue-300"
+                        : "bg-neutral-950 border-neutral-800 text-neutral-500 hover:text-neutral-300"
+                    }`}
+                  >
+                    <List className="w-3 h-3" /> List
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntityViewMode("graph")}
+                    aria-pressed={entityViewMode === "graph"}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-mono uppercase font-bold border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus:outline-none ${
+                      entityViewMode === "graph"
+                        ? "bg-blue-950 border-blue-800 text-blue-300"
+                        : "bg-neutral-950 border-neutral-800 text-neutral-500 hover:text-neutral-300"
+                    }`}
+                  >
+                    <Network className="w-3 h-3" /> Graph
+                  </button>
+                </div>
+              )}
+
               {response.entities && response.entities.length > 0 ? (
+                entityViewMode === "graph" ? (
+                  <EntityGraph
+                    entities={response.entities as any as Entity[]}
+                    relationships={(response.relationships || []) as any as Relationship[]}
+                  />
+                ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-1">
                   {response.entities.map((entity, i) => (
                     <div 
@@ -1067,21 +1104,21 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                         </span>
                       </div>
                       
-                      {entity.details && (
+                      {entity.metadata?.details && (
                         <p className="text-[11px] text-neutral-400 print:text-neutral-700 mt-2.5 leading-relaxed font-light font-sans select-text">
-                          {entity.details}
+                          {entity.metadata.details}
                         </p>
                       )}
 
                       <EvidenceViewer evidenceIds={entity.evidenceIds || []} evidencesList={response.evidences || []} />
 
-                      <div className="mt-3 pt-2.5 border-t border-neutral-950 print:border-neutral-200 flex items-center justify-between text-[8px] font-mono text-neutral-500">
-                        <span>CONFIDENCE RATIO: {entity.confidence || 100}%</span>
+                      <div className="mt-3 pt-2.5 border-t border-neutral-950 print:border-neutral-200 flex items-center justify-end text-[8px] font-mono text-neutral-500">
                         <span>NODE ID: #{i+1}</span>
                       </div>
                     </div>
                   ))}
                 </div>
+                )
               ) : (
                 <p className="text-xs text-neutral-500 font-mono py-4 italic text-center">No active asset entities mapped.</p>
               )}
@@ -1306,8 +1343,8 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                       className="bg-neutral-900/70 border border-neutral-800 print:bg-white print:border-neutral-350 p-4 rounded-lg flex flex-col justify-between hover:border-neutral-700 transition-colors"
                     >
                       <div className="flex items-center justify-between text-[11px] font-mono">
-                        <span className="text-white print:text-black truncate max-w-[130px] font-bold select-all" title={relation.from}>
-                          {relation.from}
+                        <span className="text-white print:text-black truncate max-w-[130px] font-bold select-all" title={relation.source}>
+                          {relation.source}
                         </span>
                         
                         <div className="flex flex-col items-center px-4 shrink-0">
@@ -1317,14 +1354,14 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                           <ArrowRight className="w-3.5 h-3.5 text-neutral-600 print:text-neutral-400 mt-1" />
                         </div>
 
-                        <span className="text-white print:text-black truncate max-w-[130px] font-bold select-all" title={relation.to}>
-                          {relation.to}
+                        <span className="text-white print:text-black truncate max-w-[130px] font-bold select-all" title={relation.target}>
+                          {relation.target}
                         </span>
                       </div>
 
-                      {relation.description && (
+                      {relation.metadata?.description && (
                         <p className="text-[10px] text-neutral-400 print:text-neutral-700 font-light leading-relaxed border-t border-neutral-950 print:border-neutral-200 pt-2.5 mt-2.5 select-text font-sans">
-                          {relation.description}
+                          {relation.metadata.description}
                         </p>
                       )}
 
