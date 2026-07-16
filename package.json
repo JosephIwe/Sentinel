@@ -2,6 +2,15 @@
   "name": "sentinel-api",
   "private": true,
   "version": "1.0.0-rc.1",
+  "description": "Sentinel API Intelligence Platform - Resilient Threat Intelligence Orchestrator with AI-powered Meta-Analysis",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sentinelapi/sentinel-api.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sentinelapi/sentinel-api/issues"
+  },
+  "homepage": "https://github.com/sentinelapi/sentinel-api#readme",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
