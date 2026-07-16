@@ -148,6 +148,9 @@ export interface InvestigationResult {
     cacheMisses: number;
     timeoutCount: number;
     aiSummaryTimeMs?: number;
+    githubDiscoveryAttempted?: boolean;
+    githubUrlDiscovered?: string | null;
+    githubDiscoveryStatus?: string;
   };
 }
 

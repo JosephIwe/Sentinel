@@ -97,6 +97,9 @@ interface InvestigationApiResponse {
     cacheMisses: number;
     timeoutCount: number;
     aiSummaryTimeMs?: number;
+    githubDiscoveryAttempted?: boolean;
+    githubUrlDiscovered?: string | null;
+    githubDiscoveryStatus?: string;
   };
 }
 
@@ -928,6 +931,52 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                           </span>
                         </div>
                       </div>
+
+                      {response.performance.githubDiscoveryAttempted && (
+                        <div className="mt-4 pt-4 border-t border-neutral-800/40 grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-neutral-950/50 p-3 rounded border border-neutral-850/40 flex items-start space-x-3">
+                            <Globe className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <span className="text-[9px] font-mono text-neutral-500 uppercase block">GitHub Discovery Step</span>
+                              <span className="text-xs font-semibold text-neutral-300 mt-0.5 block">
+                                Attempted (Domain Scan)
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-neutral-950/50 p-3 rounded border border-neutral-850/40 flex items-start space-x-3">
+                            <GitBranch className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <span className="text-[9px] font-mono text-neutral-500 uppercase block">Discovered GitHub Target</span>
+                              <span className="text-xs font-mono font-semibold text-neutral-300 mt-0.5 block break-all">
+                                {response.performance.githubUrlDiscovered ? (
+                                  <a 
+                                    href={response.performance.githubUrlDiscovered}
+                                    target="_blank" 
+                                    rel="noreferrer noopener"
+                                    className="text-emerald-400 hover:underline inline-flex items-center space-x-1"
+                                  >
+                                    <span>{response.performance.githubUrlDiscovered.replace("https://github.com/", "")}</span>
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                ) : (
+                                  <span className="text-neutral-500 italic">None (NO_DATA)</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="bg-neutral-950/50 p-3 rounded border border-neutral-850/40 flex items-start space-x-3">
+                            <Shield className={`w-4 h-4 mt-0.5 flex-shrink-0 ${response.performance.githubUrlDiscovered ? 'text-emerald-400' : 'text-neutral-500'}`} />
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[9px] font-mono text-neutral-500 uppercase block">Discovery Status</span>
+                              <span className="text-xs font-medium text-neutral-300 mt-0.5 block truncate" title={response.performance.githubDiscoveryStatus}>
+                                {response.performance.githubDiscoveryStatus}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

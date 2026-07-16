@@ -125,6 +125,11 @@ export class InvestigationService {
     const term = query.term.trim();
     const queryLower = term.toLowerCase();
 
+    // Diagnostics trackers for GitHub Discovery
+    let githubDiscoveryAttempted = false;
+    let githubUrlDiscovered: string | null = null;
+    let githubDiscoveryStatus = "Not applicable";
+
     // 0. Deduplicate: Return cached result for identical full investigations
     const connectorKey = this.connectors.map(c => c.name).sort().join(",");
     const fullCacheKey = `${query.type || "Generic"}:${queryLower}:${JSON.stringify(query.options || {})}:${connectorKey}`;
@@ -155,8 +160,137 @@ export class InvestigationService {
     // Each connector is hardened with: configurable timeout, retries, circuit breaker, and caching.
     const runPromises = this.connectors.map(async (connector) => {
       const connectorStartTime = Date.now();
+      let activeQuery = { ...query };
 
+      const isGithubConnector = connector.name.toLowerCase().includes("github") || connector.name.toLowerCase().includes("git");
+      const isDomainQuery = query.type === "Domain";
 
+      if (isGithubConnector && isDomainQuery) {
+        githubDiscoveryAttempted = true;
+        githubDiscoveryStatus = "Initiating homepage fetch...";
+        
+        const termToScan = query.term.trim();
+        let domainToScan = termToScan;
+        if (domainToScan.startsWith("https://")) {
+          domainToScan = domainToScan.substring(8);
+        } else if (domainToScan.startsWith("http://")) {
+          domainToScan = domainToScan.substring(7);
+        }
+        domainToScan = domainToScan.split("/")[0].trim();
+
+        try {
+          const urlsToTry = [`https://${domainToScan}`, `http://${domainToScan}`];
+          let html: string | null = null;
+          let fetchError: string | null = null;
+
+          for (const url of urlsToTry) {
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s fetch limit
+              const res = await fetch(url, {
+                signal: controller.signal,
+                headers: {
+                  "User-Agent": "Sentinel-GitHub-Discovery/1.0",
+                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                }
+              });
+              clearTimeout(timeoutId);
+              if (res.ok) {
+                html = await res.text();
+                githubDiscoveryStatus = `Successfully fetched homepage via ${url.split("://")[0].toUpperCase()}`;
+                break;
+              } else {
+                fetchError = `HTTP ${res.status}`;
+              }
+            } catch (err: any) {
+              fetchError = err.message || "Network Error";
+            }
+          }
+
+          if (!html) {
+            githubDiscoveryStatus = `Unreachable: ${fetchError || "Could not retrieve homepage content"}`;
+            githubUrlDiscovered = null;
+          } else {
+            const detectedUrls: string[] = [];
+            const ignoredGithubPaths = new Set([
+              "features", "enterprise", "pricing", "marketplace", "customer-stories",
+              "security", "login", "signup", "join", "about", "contact", "site",
+              "privacy", "terms", "explore", "topics", "trending", "collections",
+              "events", "community", "sponsors", "readme", "orgs", "users", "search",
+              "fluidicon.png", "opensearch.xml", "manifest.json", "images", "personal"
+            ]);
+
+            const regex = /https?:\/\/(?:www\.)?github\.com\/([a-zA-Z0-9_.-]+)(?:\/([a-zA-Z0-9_.-]+))?/gi;
+            let match;
+            while ((match = regex.exec(html)) !== null) {
+              const org = match[1];
+              const repo = match[2];
+              if (org && !ignoredGithubPaths.has(org.toLowerCase())) {
+                let normUrl = `https://github.com/${org}`;
+                if (repo && !ignoredGithubPaths.has(repo.toLowerCase())) {
+                  normUrl += `/${repo}`;
+                }
+                detectedUrls.push(normUrl);
+              }
+            }
+
+            const uniqueUrls = Array.from(new Set(detectedUrls));
+            if (uniqueUrls.length > 0) {
+              const repoUrls = uniqueUrls.filter(u => u.split("/").filter(Boolean).length >= 5);
+              const selectedUrl = repoUrls.length > 0 ? repoUrls[0] : uniqueUrls[0];
+              githubUrlDiscovered = selectedUrl;
+              githubDiscoveryStatus = "Discovered verified link";
+              activeQuery = {
+                term: selectedUrl,
+                type: "Generic"
+              };
+            } else {
+              githubDiscoveryStatus = "No verified GitHub link found on the target website";
+              githubUrlDiscovered = null;
+            }
+          }
+        } catch (e: any) {
+          githubDiscoveryStatus = `Error during discovery: ${e.message}`;
+          githubUrlDiscovered = null;
+        }
+
+        if (!githubUrlDiscovered) {
+          const noDataResult: ConnectorResult = {
+            connectorName: connector.name,
+            success: true,
+            status: "NO_DATA",
+            verified: true,
+            timestamp: new Date().toISOString(),
+            entities: [],
+            relationships: [],
+            timeline: [],
+            evidences: [
+              {
+                id: `ev_github_discovery_no_data`,
+                connector: connector.name,
+                title: "GitHub Discovery Run",
+                description: "No verified GitHub link found on the target website.",
+                confidence: 100,
+                timestamp: new Date().toISOString(),
+                rawData: {
+                  attempted: true,
+                  reason: "No verified GitHub link found on the target website.",
+                  discoveryStatus: githubDiscoveryStatus
+                },
+                verified: true
+              }
+            ],
+            sources: [],
+            error: "No verified GitHub link found on the target website."
+          };
+          const elapsed = Date.now() - connectorStartTime;
+          connectorTimesMs[connector.name] = elapsed;
+          if (onConnectorCompleted) {
+            onConnectorCompleted(connector.name, noDataResult, elapsed);
+          }
+          return noDataResult;
+        }
+      }
 
       // Check connector cache (Intelligent Caching)
       const connCacheKey = `${connector.name}:${query.type || "Generic"}:${queryLower}`;
@@ -183,7 +317,7 @@ export class InvestigationService {
           return await withTimeout(
             withRetry(
               async () => {
-                return await connector.run(query);
+                return await connector.run(activeQuery);
               },
               { maxRetries: 2, delayMs: 400, name: connector.name }
             ),
@@ -200,7 +334,7 @@ export class InvestigationService {
           `Connector:${connector.name}`,
           executeWithResilience,
           3000,
-          { query }
+          { query: activeQuery }
         );
 
         // Save to cache only if status is not ERROR (Never cache errors)
@@ -432,6 +566,9 @@ export class InvestigationService {
         cacheHits,
         cacheMisses,
         timeoutCount,
+        githubDiscoveryAttempted,
+        githubUrlDiscovered,
+        githubDiscoveryStatus,
       }
     };
 
