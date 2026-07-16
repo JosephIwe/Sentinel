@@ -447,11 +447,9 @@ export class InvestigationService {
           rawTimeline.push(...value.timeline);
           rawEvidences.push(...(value.evidences || []));
           rawSources.push(...value.sources);
-        } else if (status === "ERROR" || status === "TIMEOUT") {
-          // Include error/timeout fallback evidence only, no entities/relations
+        } else if (status === "ERROR" || status === "TIMEOUT" || status === "NO_DATA") {
+          // Include error/timeout/no-data fallback/discovery evidence only, no entities/relations
           rawEvidences.push(...(value.evidences || []));
-        } else if (status === "NO_DATA") {
-          // NO_DATA: Strictly do not allow AI to infer from this connector.
         }
       } else {
         connectorStatuses.push({

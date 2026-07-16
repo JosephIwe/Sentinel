@@ -23,7 +23,18 @@ export class HallucinationDetector {
     "has", "had", "have", "was", "were", "been", "are", "not", "yes", "can", "may", "will",
     "would", "should", "could", "shall", "must", "than", "then", "thus", "therefore",
     "sentinel", "intelligence", "verified", "finding", "findings", "ai", "assessment",
-    "report", "target", "analyst", "review", "confidential", "active", "completed"
+    "report", "target", "analyst", "review", "confidential", "active", "completed",
+    "domain", "domains", "we", "our", "there", "active", "network", "host", "system",
+    "query", "security", "corporate", "organization", "user", "email", "ipaddress",
+    "ip", "dns", "whois", "github", "repository", "registry", "discovery", "resolver",
+    "record", "records", "site", "website", "web", "server", "client", "data", "status",
+    "time", "profile", "history", "event", "timeline", "evidence", "source", "lookup",
+    "failed", "completed", "successful", "offline", "online", "private", "public",
+    "united", "states", "america", "global", "local", "internet", "address", "addresses",
+    "location", "locations", "routing", "routes", "route", "configured", "configuration",
+    "all", "any", "some", "none", "only", "other", "another", "such", "same", "different",
+    "many", "few", "more", "most", "less", "least", "several", "various", "multiple",
+    "single", "double", "triple", "first", "second", "third", "last", "next", "previous"
   ]);
 
   /**
