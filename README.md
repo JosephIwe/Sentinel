@@ -13,6 +13,7 @@ Sentinel is an API-first intelligence platform that fans a single query — a do
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
@@ -30,6 +31,16 @@ Sentinel is an API-first intelligence platform that fans a single query — a do
 - [License](#license)
 
 ---
+
+## Screenshots
+
+| Overview | API Playground |
+|---|---|
+| ![Sentinel overview page](assets/screenshots/overview.png) | ![Sentinel API Playground](assets/screenshots/playground.png) |
+
+<p align="center">
+  <img src="assets/screenshots/mobile.png" alt="Sentinel landing page on mobile" width="320" />
+</p>
 
 ## Features
 
