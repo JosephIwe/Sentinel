@@ -41,7 +41,7 @@ const getAiClient = () => {
   });
 };
 
-const app = express();
+export const app = express();
 const PORT = 3000;
 
 app.use(express.json());
@@ -933,4 +933,9 @@ async function startServer() {
   });
 }
 
-startServer();
+// Skip the real listener/Vite dev server bootstrap when this module is
+// imported under test (Vitest sets NODE_ENV=test by default), so tests can
+// import `app` and drive it directly with supertest.
+if (process.env.NODE_ENV !== "test") {
+  startServer();
+}
