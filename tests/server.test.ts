@@ -4,10 +4,21 @@ import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import { app } from "../server";
 
-// Seeded demo data baked into server.ts (not real secrets - this is mock
-// fixture data shipped in the repo for the in-memory API key store).
-const ACTIVE_KEY_SECRET = "sn_live_8f3c7a91de884b2ab72c67e810a01fa2"; // key_01
-const REVOKED_KEY_SECRET = "sn_live_9d2c1e83bf664e4ca92b45f718d81dd4"; // key_03
+// server.ts no longer ships hardcoded seed API keys (see utils/session.ts
+// and the RELEASE_CHECKLIST.md fix for "hardcoded live API keys"); tests
+// create their own keys on demand instead. Creating a key requires no
+// credentials (falls back to the anonymous Guest identity), same as before.
+async function createActiveKeySecret(): Promise<string> {
+  const res = await request(app).post("/api/v1/keys").send({ name: "Test Active Key" });
+  return res.body.key.secret;
+}
+
+async function createRevokedKeySecret(): Promise<string> {
+  const created = await request(app).post("/api/v1/keys").send({ name: "Test Revoked Key" });
+  const keyId = created.body.key.id;
+  await request(app).put(`/api/v1/keys/${keyId}/revoke`);
+  return created.body.key.secret;
+}
 
 describe("server.ts HTTP API", () => {
   describe("liveness/readiness endpoints", () => {
@@ -50,6 +61,49 @@ describe("server.ts HTTP API", () => {
     });
   });
 
+  describe("per-client session isolation", () => {
+    it("lets two clients log in simultaneously with different identities", async () => {
+      const clientA = request.agent(app);
+      const clientB = request.agent(app);
+
+      const loginA = await clientA.post("/api/v1/auth/login").send({ email: "alice@example.com", name: "Alice" });
+      const loginB = await clientB.post("/api/v1/auth/login").send({ email: "bob@example.com", name: "Bob" });
+      expect(loginA.status).toBe(200);
+      expect(loginB.status).toBe(200);
+
+      const meA = await clientA.get("/api/v1/auth/me");
+      const meB = await clientB.get("/api/v1/auth/me");
+
+      expect(meA.body.user.email).toBe("alice@example.com");
+      expect(meB.body.user.email).toBe("bob@example.com");
+    });
+
+    it("logging out one client's session does not affect another client's session", async () => {
+      const clientA = request.agent(app);
+      const clientB = request.agent(app);
+
+      await clientA.post("/api/v1/auth/login").send({ email: "carol@example.com", name: "Carol" });
+      await clientB.post("/api/v1/auth/login").send({ email: "dave@example.com", name: "Dave" });
+
+      const logoutA = await clientA.post("/api/v1/auth/logout");
+      expect(logoutA.status).toBe(200);
+
+      const meA = await clientA.get("/api/v1/auth/me");
+      const meB = await clientB.get("/api/v1/auth/me");
+
+      expect(meA.body.user.id).toBe("usr_guest");
+      expect(meB.body.user.email).toBe("dave@example.com");
+    });
+
+    it("a request with no session cookie never observes another client's logged-in identity", async () => {
+      const clientA = request.agent(app);
+      await clientA.post("/api/v1/auth/login").send({ email: "erin@example.com", name: "Erin" });
+
+      const anonymous = await request(app).get("/api/v1/auth/me");
+      expect(anonymous.body.user.id).toBe("usr_guest");
+    });
+  });
+
   describe("authenticateRequest middleware", () => {
     it("rejects an unrecognized API key", async () => {
       const res = await request(app)
@@ -60,40 +114,44 @@ describe("server.ts HTTP API", () => {
     });
 
     it("rejects a revoked API key", async () => {
+      const revokedSecret = await createRevokedKeySecret();
       const res = await request(app)
         .get("/api/v1/keys")
-        .set("X-API-Key", REVOKED_KEY_SECRET);
+        .set("X-API-Key", revokedSecret);
       expect(res.status).toBe(401);
       expect(res.body.error).toMatch(/revoked/i);
     });
 
     it("accepts a valid active API key via X-API-Key", async () => {
+      const activeSecret = await createActiveKeySecret();
       const res = await request(app)
         .get("/api/v1/keys")
-        .set("X-API-Key", ACTIVE_KEY_SECRET);
+        .set("X-API-Key", activeSecret);
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.keys)).toBe(true);
     });
 
     it("accepts a valid active API key via a Bearer authorization header", async () => {
+      const activeSecret = await createActiveKeySecret();
       const res = await request(app)
         .get("/api/v1/keys")
-        .set("Authorization", `Bearer ${ACTIVE_KEY_SECRET}`);
+        .set("Authorization", `Bearer ${activeSecret}`);
       expect(res.status).toBe(200);
     });
 
-    it("falls back to the browser session when no credentials are supplied", async () => {
+    it("falls back to the anonymous Guest identity when no credentials are supplied", async () => {
       const res = await request(app).get("/api/v1/keys");
       expect(res.status).toBe(200);
     });
 
     it("never returns raw API key secrets in list responses", async () => {
+      const activeSecret = await createActiveKeySecret();
       const res = await request(app)
         .get("/api/v1/keys")
-        .set("X-API-Key", ACTIVE_KEY_SECRET);
+        .set("X-API-Key", activeSecret);
       expect(res.status).toBe(200);
       for (const key of res.body.keys) {
-        expect(key.secret).not.toBe(ACTIVE_KEY_SECRET);
+        expect(key.secret).not.toBe(activeSecret);
         expect(key.secret).toContain("•");
       }
     });
@@ -168,9 +226,10 @@ describe("server.ts HTTP API", () => {
 
   describe("rate limiting", () => {
     it("attaches X-RateLimit-* headers to authenticated responses", async () => {
+      const activeSecret = await createActiveKeySecret();
       const res = await request(app)
         .get("/api/v1/keys")
-        .set("X-API-Key", ACTIVE_KEY_SECRET);
+        .set("X-API-Key", activeSecret);
       expect(res.headers["x-ratelimit-limit"]).toBeDefined();
       expect(res.headers["x-ratelimit-remaining"]).toBeDefined();
       expect(res.headers["x-ratelimit-reset"]).toBeDefined();

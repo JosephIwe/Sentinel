@@ -168,9 +168,9 @@ export class ScoringService {
 
     switch (id) {
       case "conf_whois": {
-        const matchedEv = evidences.find(e => 
-          e.connector?.toLowerCase().includes("whois") || 
-          e.id?.startsWith("ev_whois")
+        const matchedEv = evidences.find(e =>
+          (e.connector?.toLowerCase().includes("whois") || e.id?.startsWith("ev_whois")) &&
+          e.id !== "ev_whois_fallback"
         );
         return {
           matched: !!matchedEv,
@@ -233,7 +233,7 @@ export class ScoringService {
       }
 
       case "conf_missing_critical": {
-        const hasWhois = evidences.some(e => e.connector?.toLowerCase().includes("whois") || e.id?.startsWith("ev_whois"));
+        const hasWhois = evidences.some(e => (e.connector?.toLowerCase().includes("whois") || e.id?.startsWith("ev_whois")) && e.id !== "ev_whois_fallback");
         const hasDns = evidences.some(e => (e.connector?.toLowerCase().includes("dns") || e.id?.startsWith("ev_dns")) && e.id !== "ev_dns_no_records");
         const missing = !hasWhois || !hasDns;
         return {

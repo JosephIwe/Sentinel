@@ -8,10 +8,15 @@ import { IntelligenceReport, InvestigationResult } from "../src/types";
 import net from "net";
 import dns from "dns/promises";
 
-// Mock the network socket module for WHOIS socket queries
-vi.mock("net", () => {
+// Mock the network socket module for WHOIS socket queries. Only `connect` is
+// mocked - everything else (net.isIPv4/isIPv6/BlockList, used by the SSRF
+// guard in src/utils/ssrfGuard.ts) is preserved from the real module.
+vi.mock("net", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("net")>();
   return {
+    ...actual,
     default: {
+      ...(actual as any).default,
       connect: vi.fn()
     },
     connect: vi.fn()
@@ -28,7 +33,8 @@ vi.mock("dns/promises", () => {
       resolveNs: vi.fn(),
       resolveTxt: vi.fn(),
       resolveCname: vi.fn(),
-      reverse: vi.fn()
+      reverse: vi.fn(),
+      lookup: vi.fn()
     }
   };
 });
@@ -39,6 +45,15 @@ describe("Sentinel Validation Sprint - Comprehensive Test Suite", () => {
   beforeEach(() => {
     originalFetch = global.fetch;
     vi.resetAllMocks();
+    // Default: any hostname resolves to a public address, so the SSRF guard
+    // (src/utils/ssrfGuard.ts) doesn't block the GitHub-discovery homepage
+    // fetch used by these scenarios. Individual tests may override this.
+    vi.mocked(dns.lookup).mockImplementation((hostname: any) => {
+      if (net.isIP(hostname)) {
+        return Promise.resolve([{ address: hostname, family: net.isIPv4(hostname) ? 4 : 6 }]) as any;
+      }
+      return Promise.resolve([{ address: "93.184.216.34", family: 4 }]) as any;
+    });
   });
 
   afterEach(() => {

@@ -20,6 +20,13 @@ import {
   validateEnvironment,
   errorHandler
 } from "./utils/observability";
+import {
+  createSession,
+  destroySession,
+  setSessionCookie,
+  clearSessionCookie,
+  sessionMiddleware
+} from "./utils/session";
 
 dotenv.config();
 
@@ -49,6 +56,9 @@ app.use(express.json());
 // Apply global request correlation tracking and performance auditing
 app.use(requestIdMiddleware);
 app.use(auditLoggerMiddleware);
+
+// Resolves req.session/req.sessionId from a signed per-client cookie, if present
+app.use(sessionMiddleware);
 
 // Liveness, readiness, and version probes for Kubernetes/Cloud Run orchestration
 app.get("/health", (req, res) => {
@@ -81,47 +91,65 @@ app.get("/version", (req, res) => {
 });
 
 // In-Memory Database (Scale-ready simulation representing Prisma/PostgreSQL state)
-let currentUser: any = {
-  id: "usr_sentinel_94921",
-  email: "buildwisegroupofcompany@gmail.com",
-  name: "Staff Engineer Dev",
-  companyName: "Sentinel Tech Corp",
-  plan: "Pro",
-  createdAt: "2026-02-15T08:00:00Z"
+//
+// Static, non-personalized identity used for any request that presents no
+// API key and no valid session cookie. Unlike the previous `currentUser`
+// singleton, this is a constant - it is never mutated, so anonymous
+// requests never observe or interfere with another client's login state.
+const GUEST_USER = {
+  id: "usr_guest",
+  email: "guest@sentinelapi.dev",
+  name: "Guest Mode",
+  companyName: "Guest Workspace",
+  plan: "Free",
+  createdAt: new Date().toISOString()
 };
 
-let apiKeys = [
-  {
-    id: "key_01",
-    name: "Production Gateway",
-    secret: "sn_live_8f3c7a91de884b2ab72c67e810a01fa2",
+// Seed API keys only exist for local/dev convenience and are generated fresh
+// on every process start - never hardcoded, never written back to source.
+// Production deployments start with zero keys; operators must create their
+// own via POST /keys (which requires an existing valid credential/session).
+let apiKeys: Array<{
+  id: string;
+  name: string;
+  secret: string;
+  status: "active" | "revoked";
+  createdAt: string;
+  lastUsedAt: string | null;
+  requestCount: number;
+  rateLimit: number;
+}> = [];
+
+if (process.env.NODE_ENV !== "production") {
+  const demoKey = {
+    id: "key_" + crypto.randomBytes(6).toString("hex"),
+    name: "Local Dev Demo Key",
+    secret: generateSecret(),
     status: "active" as const,
-    createdAt: "2026-03-01T10:14:00Z",
-    lastUsedAt: "2026-07-11T04:12:00Z",
-    requestCount: 849202,
+    createdAt: new Date().toISOString(),
+    lastUsedAt: null,
+    requestCount: 0,
     rateLimit: 1200
-  },
-  {
-    id: "key_02",
-    name: "Staging Test Rig",
-    secret: "sn_live_4a1b8e92cf774d3ba81b56f829c91ee3",
-    status: "active" as const,
-    createdAt: "2026-05-12T14:30:22Z",
-    lastUsedAt: "2026-07-11T03:45:10Z",
-    requestCount: 39124,
-    rateLimit: 300
-  },
-  {
-    id: "key_03",
-    name: "Legacy Web Scraper",
-    secret: "sn_live_9d2c1e83bf664e4ca92b45f718d81dd4",
-    status: "revoked" as const,
-    createdAt: "2026-01-10T09:00:00Z",
-    lastUsedAt: "2026-02-28T23:59:59Z",
-    requestCount: 145028,
-    rateLimit: 600
+  };
+  apiKeys = [demoKey];
+  console.log(
+    `[Sentinel API] Generated a temporary local dev API key (not persisted, regenerated on every restart): ${demoKey.secret}`
+  );
+}
+
+// Generates a cryptographically secure API secret using Node's crypto module.
+function generateSecret(): string {
+  return "sn_live_" + crypto.randomBytes(16).toString("hex");
+}
+
+// Masks a secret for display in list/read responses. Only the create and
+// rotate endpoints should ever return the unmasked value, and only once.
+function maskSecret(secret: string): string {
+  if (!secret || secret.length <= 12) {
+    return "••••••••••••••••••••••••••••";
   }
-];
+  return `${secret.substring(0, 12)}${"•".repeat(secret.length - 12)}`;
+}
 
 let extractionJobs: any[] = [
   {
@@ -147,20 +175,6 @@ let extractionJobs: any[] = [
     result: { plans: [{ name: "Standard Payment Processing", percentage: 2.9, flatFee: 0.3 }] }
   }
 ];
-
-// Generates a cryptographically secure API secret using Node's crypto module.
-function generateSecret(): string {
-  return "sn_live_" + crypto.randomBytes(16).toString("hex");
-}
-
-// Masks a secret for display in list/read responses. Only the create and
-// rotate endpoints should ever return the unmasked value, and only once.
-function maskSecret(secret: string): string {
-  if (!secret || secret.length <= 12) {
-    return "••••••••••••••••••••••••••••";
-  }
-  return `${secret.substring(0, 12)}${"•".repeat(secret.length - 12)}`;
-}
 
 // ==========================================
 // 7. Core Sentinel API - Version 1 Router
@@ -205,15 +219,12 @@ function authenticateRequest(req: any, res: any, next: any) {
     return next();
   }
 
-  // Fallback to active browser session
-  if (currentUser) {
-    req.user = currentUser;
-    return next();
-  }
-
-  return res.status(401).json({
-    error: "Access Denied. A valid X-API-Key, Bearer token, or active session is required."
-  });
+  // Fallback: resolve the caller's own per-client session (set by
+  // sessionMiddleware from a signed cookie), or treat as anonymous Guest.
+  // This never leaks or shares identity across different clients - see
+  // utils/session.ts.
+  req.user = (req.session && req.session.user) || GUEST_USER;
+  return next();
 }
 
 // Security rate limiting middleware protecting resources from burst or malicious requests.
@@ -265,16 +276,16 @@ apiV1Router.use(rateLimitMiddleware);
 // REST APIs V1 Endpoints
 
 // 1. Session Auth
-apiV1Router.get("/auth/me", (req, res) => {
-  res.json({ user: currentUser });
+apiV1Router.get("/auth/me", (req: any, res) => {
+  res.json({ user: (req.session && req.session.user) || GUEST_USER });
 });
 
-apiV1Router.post("/auth/login", (req, res) => {
+apiV1Router.post("/auth/login", (req: any, res) => {
   const { email, name, companyName } = req.body;
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
   }
-  currentUser = {
+  const user = {
     id: "usr_" + Math.random().toString(36).substr(2, 9),
     email,
     name: name || "Developer Member",
@@ -282,19 +293,23 @@ apiV1Router.post("/auth/login", (req, res) => {
     plan: "Free",
     createdAt: new Date().toISOString()
   };
-  res.json({ user: currentUser });
+
+  // Issue a brand new session for this client only - does not affect any
+  // other client's session.
+  const sessionId = createSession(user);
+  setSessionCookie(res, sessionId);
+
+  res.json({ user });
 });
 
-apiV1Router.post("/auth/logout", (req, res) => {
-  currentUser = {
-    id: "usr_guest",
-    email: "guest@sentinelapi.dev",
-    name: "Guest Mode",
-    companyName: "Guest Workspace",
-    plan: "Free",
-    createdAt: new Date().toISOString()
-  };
-  res.json({ success: true, user: currentUser });
+apiV1Router.post("/auth/logout", (req: any, res) => {
+  // Destroy only the caller's own session, if any; other clients' sessions
+  // are untouched.
+  if (req.sessionId) {
+    destroySession(req.sessionId);
+  }
+  clearSessionCookie(res);
+  res.json({ success: true, user: GUEST_USER });
 });
 
 // 2. API Key Management

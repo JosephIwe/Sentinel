@@ -118,9 +118,25 @@ export class DnsConnector implements Connector {
       }
     }
 
-    // Default domain fallback if we still cannot identify a valid host
+    // If we still cannot identify a valid host to resolve, skip DNS
+    // resolution entirely rather than substituting an unrelated domain -
+    // querying and returning real records for a hardcoded fallback host
+    // would misrepresent them as being about the investigation target.
     if (!domain || domain.length === 0 || domain.includes(" ")) {
-      domain = "sentinel-gateway.net";
+      return {
+        connectorName: this.name,
+        success: true,
+        status: "NO_DATA",
+        verified: true,
+        timestamp,
+        entities: [],
+        relationships: [],
+        timeline: [],
+        evidences: [],
+        sources: [],
+        error: "No valid domain could be derived from the investigation target.",
+        rawData: { info: "No valid domain could be derived from the investigation target." }
+      };
     }
 
     const results = {

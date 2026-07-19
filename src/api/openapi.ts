@@ -179,7 +179,7 @@ export const openApiSpec = {
                     {
                       id: "key_01",
                       name: "Production Gateway",
-                      secret: "sn_live_8f3c7a91de884b2ab72c67e810a01fa2",
+                      secret: "sn_live_example00000000000000000000",
                       status: "active",
                       createdAt: "2026-03-01T10:14:00Z",
                       lastUsedAt: "2026-07-11T04:12:00Z",
@@ -282,7 +282,7 @@ export const openApiSpec = {
                   key: {
                     id: "key_01",
                     name: "Production Gateway",
-                    secret: "sn_live_8f3c7a91de884b2ab72c67e810a01fa2",
+                    secret: "sn_live_example00000000000000000000",
                     status: "revoked",
                     createdAt: "2026-03-01T10:14:00Z",
                     lastUsedAt: "2026-07-11T04:12:00Z",
