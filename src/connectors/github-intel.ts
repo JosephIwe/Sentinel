@@ -32,8 +32,10 @@ export class GithubIntelligenceConnector implements Connector {
 
   /**
    * Helper to perform rate-limit-aware fetch requests to GitHub REST API.
+   * `status: 0` signals a network-level exception (no HTTP response was
+   * ever received), distinct from a real upstream HTTP status.
    */
-  private async fetchGithub<T>(url: string, token?: string): Promise<{ data: T | null; status: number; rateLimitRemaining: number }> {
+  private async fetchGithub<T>(url: string, token?: string): Promise<{ data: T | null; status: number; rateLimitRemaining: number; networkError?: string }> {
     const headers: Record<string, string> = {
       "Accept": "application/vnd.github.v3+json",
       "User-Agent": "Sentinel-Intelligence-Engine"
@@ -46,7 +48,7 @@ export class GithubIntelligenceConnector implements Connector {
     try {
       const res = await fetch(url, { headers });
       const rateLimitRemaining = parseInt(res.headers.get("x-ratelimit-remaining") || "60", 10);
-      
+
       if (res.status === 403 || res.status === 429) {
         console.warn(`[GitHub API] Rate limit or access issue on ${url} (Status ${res.status}). Remaining: ${rateLimitRemaining}`);
         return { data: null, status: res.status, rateLimitRemaining };
@@ -60,8 +62,33 @@ export class GithubIntelligenceConnector implements Connector {
       return { data, status: res.status, rateLimitRemaining };
     } catch (err: any) {
       console.error(`[GitHub API Connection Error] Failed fetching ${url}:`, err.message);
-      return { data: null, status: 500, rateLimitRemaining: 0 };
+      return { data: null, status: 0, rateLimitRemaining: 0, networkError: err.message || "Network error" };
     }
+  }
+
+  /**
+   * Distinguishes a genuine "not found" (404) from a failure that means we
+   * simply couldn't determine whether the target exists (auth/rate-limit/
+   * server/network errors) - these must never be reported as NO_DATA.
+   */
+  private isFailureStatus(status: number): boolean {
+    return status === 0 || status === 401 || status === 403 || status === 429 || status >= 500;
+  }
+
+  /**
+   * Produces a human-readable diagnostic reason for a failed existence check.
+   */
+  private describeFailure(context: string, res: { status: number; networkError?: string }): string {
+    if (res.networkError) {
+      return `GitHub API ${context} failed due to a network error: ${res.networkError}`;
+    }
+    if (res.status === 429) {
+      return `GitHub API ${context} was rate-limited (HTTP 429). Configure GITHUB_TOKEN to raise the rate limit.`;
+    }
+    if (res.status === 401 || res.status === 403) {
+      return `GitHub API ${context} was denied (HTTP ${res.status}). This may be an unauthenticated rate limit or an invalid GITHUB_TOKEN.`;
+    }
+    return `GitHub API ${context} failed with an upstream server error (HTTP ${res.status}).`;
   }
 
   /**
@@ -179,6 +206,10 @@ export class GithubIntelligenceConnector implements Connector {
     // Data containers
     let orgData: any = null;
     let repoData: any = null;
+    // Set when an existence-determining lookup (org/user or repo) fails with
+    // a rate-limit/auth/server/network error, so that failure is never
+    // silently reported as NO_DATA below.
+    let criticalFailureReason: string | null = null;
     let languagesData: Record<string, number> = {};
     let communityProfile: any = null;
     let securityMdExists = false;
@@ -197,6 +228,9 @@ export class GithubIntelligenceConnector implements Connector {
       orgRes = await this.fetchGithub<any>(userUrl, token);
     }
     orgData = orgRes.data;
+    if (!orgData && this.isFailureStatus(orgRes.status)) {
+      criticalFailureReason = this.describeFailure("organization/user lookup", orgRes);
+    }
 
     // If it's not explicitly a repository query but we have a user/org, let's fetch their public repositories to analyze the most active one
     if (!isRepo && orgData) {
@@ -215,6 +249,9 @@ export class GithubIntelligenceConnector implements Connector {
       const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
       const repoRes = await this.fetchGithub<any>(repoUrl, token);
       repoData = repoRes.data;
+      if (!repoData && this.isFailureStatus(repoRes.status)) {
+        criticalFailureReason = this.describeFailure("repository lookup", repoRes);
+      }
 
       if (repoData) {
         sources.push(`https://github.com/${owner}/${repo}`);
@@ -522,11 +559,17 @@ export class GithubIntelligenceConnector implements Connector {
     };
 
     const hasData = !!(repoData || orgData);
-    const status = hasData ? "SUCCESS" : "NO_DATA";
+    // A rate-limit/auth/server/network failure must never be reported as
+    // NO_DATA (which means "confirmed absent") - only a real 404 means that.
+    const status: ConnectorResult["status"] = hasData
+      ? "SUCCESS"
+      : criticalFailureReason
+        ? "ERROR"
+        : "NO_DATA";
 
     const result: ConnectorResult = {
       connectorName: this.name,
-      success: true,
+      success: status !== "ERROR",
       status,
       verified: true,
       timestamp,
@@ -535,7 +578,8 @@ export class GithubIntelligenceConnector implements Connector {
       timeline,
       evidences,
       sources,
-      rawData: finalRawData
+      rawData: finalRawData,
+      ...(status === "ERROR" && criticalFailureReason ? { error: criticalFailureReason } : {})
     };
 
     // Store in Cache

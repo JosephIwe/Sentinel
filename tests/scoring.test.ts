@@ -62,6 +62,20 @@ describe("ScoringService", () => {
       expect(rule?.appliedPoints).toBe(20);
     });
 
+    it("applies conf_whois but ignores the ev_whois_fallback sentinel (failed lookup)", () => {
+      const fallbackOnly = makeResult({
+        evidences: [makeEvidence({ id: "ev_whois_fallback", connector: "WHOIS Registry Resolver" })],
+      });
+      const fallback = service.calculateConfidence(fallbackOnly);
+      expect(fallback.evaluations.find(e => e.id === "conf_whois")?.matched).toBe(false);
+
+      const realMatch = makeResult({
+        evidences: [makeEvidence({ id: "ev_whois_record_match", connector: "WHOIS Registry Resolver" })],
+      });
+      const real = service.calculateConfidence(realMatch);
+      expect(real.evaluations.find(e => e.id === "conf_whois")?.matched).toBe(true);
+    });
+
     it("applies conf_dns but ignores the ev_dns_no_records sentinel", () => {
       const noRecordsResult = makeResult({
         evidences: [makeEvidence({ id: "ev_dns_no_records", connector: "DNS Resolver" })],
@@ -115,6 +129,16 @@ describe("ScoringService", () => {
         ],
       });
       expect(service.calculateConfidence(bothPresent).evaluations.find(e => e.id === "conf_missing_critical")?.matched).toBe(false);
+    });
+
+    it("treats a failed WHOIS lookup (ev_whois_fallback) as missing, not present, for conf_missing_critical", () => {
+      const failedWhoisOnly = makeResult({
+        evidences: [
+          makeEvidence({ id: "ev_whois_fallback", connector: "WHOIS Registry Resolver" }),
+          makeEvidence({ id: "ev_dns_a_record", connector: "DNS Resolver" }),
+        ],
+      });
+      expect(service.calculateConfidence(failedWhoisOnly).evaluations.find(e => e.id === "conf_missing_critical")?.matched).toBe(true);
     });
 
     it("applies conf_contradictory when evidence text signals conflict", () => {

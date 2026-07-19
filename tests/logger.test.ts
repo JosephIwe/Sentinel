@@ -5,10 +5,10 @@ describe("Structured Logger - Security Sanitization", () => {
   it("should mask sensitive keys recursively", () => {
     const rawData = {
       username: "alex_analyst",
-      secret: "sn_live_abcdef1234567890abcdef1234567890",
+      secret: "sn_live_00000000000000000000000000000000",
       headers: {
-        authorization: "Bearer sn_live_9d2c1e83bf664e4ca92b45f718d81dd4",
-        "X-API-Key": "sn_live_8f3c7a91de884b2ab72c67e810a01fa2"
+        authorization: "Bearer sn_live_11111111111111111111111111111111",
+        "X-API-Key": "sn_live_22222222222222222222222222222222"
       },
       metadata: {
         safeField: "not-sensitive"

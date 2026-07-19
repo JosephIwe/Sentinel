@@ -2,6 +2,7 @@ import { Connector, InvestigationResult, Entity, Relationship, TimelineEvent, Ev
 import { EntityResolutionService } from "./entityResolution";
 import { withRetry, withTimeout, CircuitBreakerRegistry } from "../utils/reliability";
 import { logger } from "../utils/logger";
+import { safeFetch } from "../utils/ssrfGuard";
 
 /**
  * Enterprise Investigation Orchestrator Service
@@ -187,7 +188,7 @@ export class InvestigationService {
             try {
               const controller = new AbortController();
               const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s fetch limit
-              const res = await fetch(url, {
+              const res = await safeFetch(url, {
                 signal: controller.signal,
                 headers: {
                   "User-Agent": "Sentinel-GitHub-Discovery/1.0",
