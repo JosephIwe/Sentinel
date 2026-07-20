@@ -181,6 +181,18 @@ export class InvestigationService {
 
         let homepageFetchFailed = false;
 
+        // github.com's own homepage links to trending/featured repos owned by
+        // unrelated third parties (e.g. "awslabs/mcp") - scraping it for a
+        // "github.com/<org>" link and attributing that org to the target
+        // would misrepresent someone else's repository as github.com's own
+        // GitHub presence. Skip discovery entirely for this self-referential
+        // case rather than guessing.
+        const isGithubItself = /^(www\.)?github\.com$/i.test(domainToScan);
+
+        if (isGithubItself) {
+          githubDiscoveryStatus = "Not applicable: target is GitHub itself";
+          githubUrlDiscovered = null;
+        } else {
         try {
           const urlsToTry = [`https://${domainToScan}`, `http://${domainToScan}`];
           let html: string | null = null;
@@ -257,6 +269,7 @@ export class InvestigationService {
           homepageFetchFailed = true;
           githubDiscoveryStatus = `Error during discovery: ${e.message}`;
           githubUrlDiscovered = null;
+        }
         }
 
         if (!githubUrlDiscovered) {
