@@ -27,6 +27,7 @@ import {
   clearSessionCookie,
   sessionMiddleware
 } from "./utils/session";
+import { betaGateMiddleware } from "./utils/betaGate";
 
 dotenv.config();
 
@@ -59,6 +60,11 @@ app.use(auditLoggerMiddleware);
 
 // Resolves req.session/req.sessionId from a signed per-client cookie, if present
 app.use(sessionMiddleware);
+
+// Private-beta access gate for the web UI (no-op unless APP_ACCESS_CODE is
+// set; never applies to /api/*, /health, /ready, /version). See
+// utils/betaGate.ts for details and removal instructions.
+app.use(betaGateMiddleware);
 
 // Liveness, readiness, and version probes for Kubernetes/Cloud Run orchestration
 app.get("/health", (req, res) => {
@@ -272,6 +278,30 @@ async function rateLimitMiddleware(req: any, res: any, next: any) {
 }
 
 apiV1Router.use(rateLimitMiddleware);
+
+// Basic per-IP rate limiting for investigation creation specifically.
+// Separate from (and in addition to) the general per-key/per-IP limiter
+// above: investigations are the most expensive operation (spawns real
+// WHOIS/DNS/GitHub connector calls plus AI synthesis), so this caps launch
+// volume per IP regardless of API key quota.
+async function investigationCreationRateLimit(req: any, res: any, next: any) {
+  try {
+    const identifier = `ip_investigate_${req.ip}`;
+    const rateCheck = await DistributedRateLimiter.check(identifier, 10, 60000);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        error: "Too Many Requests",
+        message: `Investigation creation is limited to 10 requests per minute per IP address. Retry after ${rateCheck.resetSeconds} seconds.`,
+        retryAfterSeconds: rateCheck.resetSeconds,
+        requestId: req.id
+      });
+    }
+    next();
+  } catch (err) {
+    // Fail-open, consistent with the general rate limiter above
+    next();
+  }
+}
 
 // REST APIs V1 Endpoints
 
@@ -704,7 +734,7 @@ function mapTypeToQueryType(type: string): "Domain" | "Organization" | "Person" 
 
 // 6b. Asynchronous Investigation Jobs Endpoints inside the router
 
-apiV1Router.post("/investigations", authenticateRequest, (req: any, res) => {
+apiV1Router.post("/investigations", authenticateRequest, investigationCreationRateLimit, (req: any, res) => {
   const validation = validateInvestigationInput(req.body);
   if (!validation.valid) {
     return res.status(400).json({ error: validation.message });
@@ -746,7 +776,7 @@ apiV1Router.get("/investigations/:jobId", authenticateRequest, (req: any, res) =
 });
 
 // Unified Endpoint to run parallel multi-source investigation and synthesize strategic intelligence reports
-apiV1Router.post("/investigate", authenticateRequest, async (req: any, res) => {
+apiV1Router.post("/investigate", authenticateRequest, investigationCreationRateLimit, async (req: any, res) => {
   if (req.body && (req.body.value !== undefined || (req.body.type !== undefined && !req.body.term))) {
     const validation = validateInvestigationInput(req.body);
     if (!validation.valid) {

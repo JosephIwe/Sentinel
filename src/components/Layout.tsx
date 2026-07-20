@@ -148,6 +148,11 @@ export default function Layout({
         </div>
       </header>
 
+      {/* Beta Banner - remove this block to disable */}
+      <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-300 text-xs text-center py-2 px-4 print:hidden">
+        Sentinel Beta — results may be incomplete; verify findings independently.
+      </div>
+
       {/* Main Content Body */}
       <main className="flex-grow flex flex-col relative z-10">
         {children}
