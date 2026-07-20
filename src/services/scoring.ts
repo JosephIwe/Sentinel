@@ -194,9 +194,9 @@ export class ScoringService {
       }
 
       case "conf_github": {
-        const matchedEv = evidences.find(e => 
-          e.connector?.toLowerCase().includes("github") || 
-          e.id?.startsWith("ev_gh")
+        const matchedEv = evidences.find(e =>
+          (e.connector?.toLowerCase().includes("github") || e.id?.startsWith("ev_gh")) &&
+          e.id !== "ev_github_discovery_no_data"
         );
         return {
           matched: !!matchedEv,

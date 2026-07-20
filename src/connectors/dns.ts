@@ -172,10 +172,15 @@ export class DnsConnector implements Connector {
     const lookupMx = async () => {
       try {
         const rawMx = await this.withTimeout(dns.resolveMx(domain));
-        results.MX = rawMx.map(item => ({
-          exchange: item.exchange,
-          priority: item.priority
-        }));
+        // Some resolvers return a record with an empty exchange instead of
+        // ENODATA when there is no real mail server - drop those rather than
+        // surfacing an entity/evidence with a blank name.
+        results.MX = rawMx
+          .filter(item => !!item.exchange)
+          .map(item => ({
+            exchange: item.exchange,
+            priority: item.priority
+          }));
       } catch (err: any) {
         if (err.code !== "ENODATA" && err.code !== "ENOTFOUND") {
           console.warn(`[DNS] Failed MX resolution for ${domain}: ${err.message}`);

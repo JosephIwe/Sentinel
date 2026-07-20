@@ -179,6 +179,8 @@ export class InvestigationService {
         }
         domainToScan = domainToScan.split("/")[0].trim();
 
+        let homepageFetchFailed = false;
+
         try {
           const urlsToTry = [`https://${domainToScan}`, `http://${domainToScan}`];
           let html: string | null = null;
@@ -209,6 +211,7 @@ export class InvestigationService {
           }
 
           if (!html) {
+            homepageFetchFailed = true;
             githubDiscoveryStatus = `Unreachable: ${fetchError || "Could not retrieve homepage content"}`;
             githubUrlDiscovered = null;
           } else {
@@ -251,21 +254,31 @@ export class InvestigationService {
             }
           }
         } catch (e: any) {
+          homepageFetchFailed = true;
           githubDiscoveryStatus = `Error during discovery: ${e.message}`;
           githubUrlDiscovered = null;
         }
 
         if (!githubUrlDiscovered) {
+          // Distinguish "we fetched the homepage and genuinely found no
+          // GitHub link" (NO_DATA) from "we could not fetch the homepage at
+          // all" - network error, timeout, WAF block, or the SSRF guard
+          // rejecting the target (ERROR). Reporting the latter as NO_DATA
+          // would misrepresent an inconclusive check as a confirmed absence.
+          const status: ConnectorResult["status"] = homepageFetchFailed ? "ERROR" : "NO_DATA";
+          const reason = homepageFetchFailed
+            ? `Could not verify GitHub presence: homepage fetch failed (${githubDiscoveryStatus}).`
+            : "No verified GitHub link found on the target website.";
           const noDataResult: ConnectorResult = {
             connectorName: connector.name,
-            success: true,
-            status: "NO_DATA",
+            success: status !== "ERROR",
+            status,
             verified: true,
             timestamp: new Date().toISOString(),
             entities: [],
             relationships: [],
             timeline: [],
-            evidences: [
+            evidences: homepageFetchFailed ? [] : [
               {
                 id: `ev_github_discovery_no_data`,
                 connector: connector.name,
@@ -282,7 +295,7 @@ export class InvestigationService {
               }
             ],
             sources: [],
-            error: "No verified GitHub link found on the target website."
+            error: reason
           };
           const elapsed = Date.now() - connectorStartTime;
           connectorTimesMs[connector.name] = elapsed;
