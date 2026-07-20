@@ -52,11 +52,24 @@ const getAiClient = () => {
 export const app = express();
 const PORT = 3000;
 
-app.use(express.json());
-
-// Apply global request correlation tracking and performance auditing
+// Apply global request correlation tracking and performance auditing first,
+// so a request ID exists even if body parsing below fails.
 app.use(requestIdMiddleware);
 app.use(auditLoggerMiddleware);
+
+app.use(express.json());
+
+// Malformed JSON bodies are a client error, not a server fault - return 400
+// instead of falling through to the generic 500 error handler.
+app.use((err: any, req: any, res: any, next: any) => {
+  if (err?.type === "entity.parse.failed" || err instanceof SyntaxError) {
+    return res.status(400).json({
+      error: "Malformed JSON in request body.",
+      requestId: req.id
+    });
+  }
+  next(err);
+});
 
 // Resolves req.session/req.sessionId from a signed per-client cookie, if present
 app.use(sessionMiddleware);
