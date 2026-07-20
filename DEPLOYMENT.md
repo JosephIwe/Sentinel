@@ -132,7 +132,7 @@ Sentinel features active liveness, readiness, and version diagnostics designed f
 
 ### 2. Readiness Probe
 - **Endpoint**: `GET /ready`
-- **Description**: Determines if the application is fully prepared to receive live traffic, validating external upstream connections (such as the Gemini API).
+- **Description**: Determines if the application is configured to receive live traffic. `geminiApi` and `githubToken` report a deterministic classification of the corresponding env var — `"missing"` (unset/empty), `"placeholder"` (a known example/template value such as `your_key`, `changeme`, `placeholder`, or `test`), or `"configured"` (any other value present). This is a local, in-process check only — it never makes an outbound call to Gemini or GitHub, so it stays fast and cannot itself fail due to those services being down or rate-limited.
 - **Response Format**: `application/json`
 - **Example Response**:
   ```json
@@ -140,7 +140,8 @@ Sentinel features active liveness, readiness, and version diagnostics designed f
     "status": "ready",
     "timestamp": "2026-07-16T12:00:00.000Z",
     "services": {
-      "geminiApi": "connected",
+      "geminiApi": "configured",
+      "githubToken": "missing",
       "inMemoryStore": "ready"
     }
   }

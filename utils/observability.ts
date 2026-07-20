@@ -60,6 +60,29 @@ export function auditLoggerMiddleware(req: any, res: Response, next: NextFunctio
   next();
 }
 
+const PLACEHOLDER_CREDENTIAL_VALUES = new Set([
+  "your_key",
+  "your_token",
+  "changeme",
+  "placeholder",
+  "test",
+  "my_gemini_api_key",
+  "your-gemini-api-key-here",
+  "your-github-token-here"
+]);
+
+/**
+ * Classifies a credential env var without making any outbound calls, so it's
+ * safe to use in a readiness probe: "missing" (unset/empty), "placeholder"
+ * (a known example/template value), or "configured" (anything else).
+ */
+export function classifyCredential(value: string | undefined): "missing" | "placeholder" | "configured" {
+  const trimmed = value?.trim();
+  if (!trimmed) return "missing";
+  if (PLACEHOLDER_CREDENTIAL_VALUES.has(trimmed.toLowerCase())) return "placeholder";
+  return "configured";
+}
+
 /**
  * Validates critical environment variables at startup.
  */

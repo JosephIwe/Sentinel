@@ -1,6 +1,6 @@
 process.env.NODE_ENV = "test";
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import request from "supertest";
 import { app } from "../server";
 
@@ -32,6 +32,51 @@ describe("server.ts HTTP API", () => {
       const res = await request(app).get("/version");
       expect(res.status).toBe(200);
       expect(res.body.name).toContain("Sentinel");
+    });
+
+    describe("GET /ready credential classification", () => {
+      const originalGemini = process.env.GEMINI_API_KEY;
+      const originalGithub = process.env.GITHUB_TOKEN;
+
+      afterEach(() => {
+        if (originalGemini === undefined) delete process.env.GEMINI_API_KEY;
+        else process.env.GEMINI_API_KEY = originalGemini;
+        if (originalGithub === undefined) delete process.env.GITHUB_TOKEN;
+        else process.env.GITHUB_TOKEN = originalGithub;
+      });
+
+      it("reports \"missing\" for unset credentials", async () => {
+        delete process.env.GEMINI_API_KEY;
+        delete process.env.GITHUB_TOKEN;
+        const res = await request(app).get("/ready");
+        expect(res.status).toBe(200);
+        expect(res.body.services.geminiApi).toBe("missing");
+        expect(res.body.services.githubToken).toBe("missing");
+      });
+
+      it("reports \"placeholder\" for known example/template values", async () => {
+        process.env.GEMINI_API_KEY = "your_key";
+        process.env.GITHUB_TOKEN = "changeme";
+        const res = await request(app).get("/ready");
+        expect(res.body.services.geminiApi).toBe("placeholder");
+        expect(res.body.services.githubToken).toBe("placeholder");
+      });
+
+      it("reports \"configured\" for a real-looking value", async () => {
+        process.env.GEMINI_API_KEY = "AIzaSyReal-Looking-Key-1234567890";
+        process.env.GITHUB_TOKEN = "ghp_RealLookingToken1234567890";
+        const res = await request(app).get("/ready");
+        expect(res.body.services.geminiApi).toBe("configured");
+        expect(res.body.services.githubToken).toBe("configured");
+      });
+
+      it("never makes an outbound call (responds immediately regardless of credential state)", async () => {
+        process.env.GEMINI_API_KEY = "AIzaSyReal-Looking-Key-1234567890";
+        const start = Date.now();
+        const res = await request(app).get("/ready");
+        expect(res.status).toBe(200);
+        expect(Date.now() - start).toBeLessThan(500);
+      });
     });
   });
 

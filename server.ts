@@ -18,7 +18,8 @@ import {
   requestIdMiddleware,
   auditLoggerMiddleware,
   validateEnvironment,
-  errorHandler
+  errorHandler,
+  classifyCredential
 } from "./utils/observability";
 import {
   createSession,
@@ -89,12 +90,12 @@ app.get("/health", (req, res) => {
 });
 
 app.get("/ready", (req, res) => {
-  const aiClientAvailable = getAiClient() !== null;
   res.json({
     status: "ready",
     timestamp: new Date().toISOString(),
     services: {
-      geminiApi: aiClientAvailable ? "connected" : "degraded",
+      geminiApi: classifyCredential(process.env.GEMINI_API_KEY),
+      githubToken: classifyCredential(process.env.GITHUB_TOKEN),
       inMemoryStore: "ready"
     }
   });
