@@ -1841,12 +1841,92 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* Security Posture Section (security.txt / RFC 9116) */}
+          {(() => {
+            const securityTxtStatus = response.connectorStatuses?.find((s: any) => s.name === "SecurityTxt Compliance Resolver");
+            if (!securityTxtStatus) return null;
+
+            const detectedEv = response.evidences?.find(ev => ev.id === "ev_securitytxt_detected");
+            const expiredEv = response.evidences?.find(ev => ev.id === "ev_securitytxt_expired");
+            const found = securityTxtStatus.status === "SUCCESS" && !!detectedEv;
+            const rawData = detectedEv?.rawData;
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="security-posture-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <ShieldCheck className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>8. Security Posture</span>
+                    </h3>
+                    {found ? (
+                      <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded uppercase tracking-wider shrink-0">
+                        security.txt PUBLISHED
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-mono font-bold text-neutral-400 bg-neutral-800/40 border border-neutral-700/50 px-2 py-0.5 rounded uppercase tracking-wider shrink-0">
+                        NOT FOUND
+                      </span>
+                    )}
+                  </div>
+
+                  {!found ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      No security.txt file was found.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {expiredEv && (
+                        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px] font-mono px-3 py-2 rounded">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          <span>WARNING: {expiredEv.description}</span>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Contact</span>
+                          <span className="text-xs text-neutral-200 print:text-black break-all">
+                            {rawData?.contact?.length > 0 ? rawData.contact.join(", ") : "Not published"}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Policy URL</span>
+                          <span className="text-xs text-neutral-200 print:text-black break-all">
+                            {rawData?.policy?.length > 0 ? rawData.policy.join(", ") : "Not published"}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Expiration Date</span>
+                          <span className="text-xs text-neutral-200 print:text-black">
+                            {rawData?.expires || "Not specified"}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Preferred Languages</span>
+                          <span className="text-xs text-neutral-200 print:text-black">
+                            {rawData?.preferredLanguages || "Not specified"}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg sm:col-span-2">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Canonical URL</span>
+                          <span className="text-xs text-neutral-200 print:text-black break-all">
+                            {rawData?.canonical?.length > 0 ? rawData.canonical.join(", ") : "Not published"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>8. Strategic Security & Countermeasure Recommendations</span>
+                <span>9. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (
@@ -1881,7 +1961,7 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <Globe className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>9. Source Footprint Citations</span>
+                <span>10. Source Footprint Citations</span>
               </h3>
 
               {response.sources && response.sources.length > 0 ? (
@@ -1918,7 +1998,7 @@ export default function InvestigationReport({ response, targetType, targetQuery 
               >
                 <div className="flex items-center space-x-2">
                   <Cpu className="w-4 h-4 text-neutral-400 animate-pulse" />
-                  <span>10. Raw AI Response JSON Payload</span>
+                  <span>11. Raw AI Response JSON Payload</span>
                 </div>
                 <div className="flex items-center space-x-2.5">
                   <span className="text-[9px] font-normal text-neutral-500 lowercase bg-neutral-900 px-2 py-0.5 rounded border border-neutral-850">

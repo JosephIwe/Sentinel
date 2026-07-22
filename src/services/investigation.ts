@@ -100,6 +100,7 @@ export class InvestigationService {
     else if (nameLower.includes("github")) envVarName = "GITHUB_TIMEOUT_MS";
     else if (nameLower.includes("google")) envVarName = "GOOGLE_TIMEOUT_MS";
     else if (nameLower.includes("news")) envVarName = "NEWS_TIMEOUT_MS";
+    else if (nameLower.includes("securitytxt")) envVarName = "SECURITYTXT_TIMEOUT_MS";
 
     if (envVarName && process.env[envVarName]) {
       const parsed = parseInt(process.env[envVarName]!, 10);
