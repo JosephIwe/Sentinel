@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { WhoisConnector } from "./src/connectors/whois";
 import { DnsConnector } from "./src/connectors/dns";
 import { GithubIntelligenceConnector } from "./src/connectors/github-intel";
+import { SecurityTxtConnector } from "./src/connectors/securitytxt";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
 import { InvestigationWorker } from "./src/services/investigationWorker";
@@ -601,11 +602,13 @@ apiV1Router.get("/openapi.json", (req, res) => {
 const whoisConnector = new WhoisConnector();
 const dnsConnector = new DnsConnector();
 const githubIntelligenceConnector = new GithubIntelligenceConnector();
+const securityTxtConnector = new SecurityTxtConnector();
 
 const investigationService = new InvestigationService([
   whoisConnector,
   dnsConnector,
   githubIntelligenceConnector,
+  securityTxtConnector,
 ]);
 
 // Seed in-memory list tracking successful multi-source intelligence reports

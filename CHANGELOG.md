@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- New `SecurityTxtConnector` (Beta): checks a target's `/.well-known/security.txt`
+  and legacy `/security.txt` locations, parses the RFC 9116 fields (Contact,
+  Expires, Encryption, Preferred-Languages, Canonical, Policy, Hiring), and
+  surfaces the published security contact, disclosure policy, and expiry
+  status as evidence. Reports are shown in a new "Security Posture" report
+  section. See `docs/CONNECTOR_SCORECARD.md`.
+
 ### Security
 - API key secrets are now generated with a cryptographically secure random
   source (`crypto.randomBytes`) instead of `Math.random()`.
