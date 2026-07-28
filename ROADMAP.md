@@ -1,5 +1,7 @@
 # Sentinel Roadmap
 
+_See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the canonical, up-to-date roadmap, including the pre-GA punch list. This file is kept in sync as a summary._
+
 ## v1.1 Connector Expansion
 
 - SecurityTxtConnector
