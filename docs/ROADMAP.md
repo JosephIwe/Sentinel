@@ -159,16 +159,16 @@ This milestone was executed under a tighter, explicitly-scoped instruction set t
 
 ---
 
-## Deferred: v1.1 Connector Expansion
+## v1.1 Connector Expansion — IN PROGRESS
 
-Recommendation: hold this behind Milestones 0–3. Shipping new connectors on top of an unfixed IDOR and untested ownership model just means more data exposed to the same bug.
+Originally held behind Milestones 0–3 (shipping connectors on top of an unfixed IDOR would just expose more data to the same bug). Unblocked once Milestones 0–2 closed the IDOR, added ownership regression tests, and completed release engineering.
 
-- `TechnologyFingerprintConnector`
-- `CertificateTransparencyConnector`
-- `ShodanConnector`
-- `Crawl4AI WebFootprintConnector`
+- [x] `TechnologyFingerprintConnector` — **Beta, shipped 2026-07-28.** Identifies web technologies from directly observable signal only (response headers, `Set-Cookie` names, `<meta name="generator">`, distinctive markup/asset markers). Every detection records its exact source and the literal observed value; versions only when literally present. Emits `Technology` entities linked to the target `Domain` via `RUNS_TECHNOLOGY`. 16 tests (12 unit + 4 pipeline integration); real-domain smoke tests exercised all three status paths.
+- [ ] `CertificateTransparencyConnector`
+- [ ] `ShodanConnector`
+- [ ] `Crawl4AI WebFootprintConnector`
 
-Each ships one at a time via `docs/CONNECTOR_RELEASE_CHECKLIST.md` once resumed.
+Each ships one at a time via `docs/CONNECTOR_RELEASE_CHECKLIST.md`.
 
 ## Further out
 

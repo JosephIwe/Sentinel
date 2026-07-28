@@ -6,6 +6,38 @@ Entries prior to 2026-07-28 are reconstructed from git history for continuity, s
 
 ---
 
+## 2026-07-28 — v1.1 connector expansion: TechnologyFingerprintConnector (implementation)
+
+**Prompted by**: user instruction to begin implementing the Technology Fingerprinting connector, the first of the four planned v1.1 connectors.
+
+**Design decisions, made before writing code**:
+- **Data sources = only what one HTTPS GET makes directly observable**: response headers (`Server`, `X-Powered-By`, `X-Generator`, vendor-proprietary headers), `Set-Cookie` *names*, the `<meta name="generator">` tag, and a small set of unambiguous markup/asset-path markers. Nothing inferred beyond a literal match. This is the project's core anti-fabrication invariant applied to a category of connector that is unusually tempting to fake — a "technology detector" could trivially emit plausible-sounding guesses, which is exactly what got three connectors deleted in July.
+- **Every detection is auditable**: each records `matchedOn` (e.g. `header:server`) and the literal `matchedValue` observed, so an analyst can independently re-verify against the raw response. Versions are extracted only when they literally follow the product token (`nginx/1.18.0`, `WordPress 6.4.2`) — never guessed, and the field is simply absent otherwise.
+- **Confidence tiers reflect evidence strength**: direct self-identification (Server/X-Powered-By/meta generator) 90; vendor-proprietary headers 85; distinctive HTML markers 78; session-cookie conventions 70 (weakest — cookie names are customizable). Independent corroboration adds a small capped boost (+3 per extra source, max 95), since two independent signals genuinely are stronger evidence than one.
+- **Cookie values are never recorded** — only names are inspected and stored, since values can carry session material. Vendor headers store only "header present", since their values are trace IDs. Both are covered by explicit tests.
+- **Status semantics mirror `SecurityTxtConnector`**: SUCCESS = fetched and ≥1 signature matched; NO_DATA = fetched cleanly but nothing matched (genuine absence of *detectable* tech) or non-domain target skipped; ERROR = any failure to reach the host (DNS/network/SSRF/timeout/non-2xx). A fetch failure is never reported as "no technologies found".
+- **Entity types**: emits `Technology` entities deliberately rather than `Generic`, because `Generic` is eligible for the entity resolver's known cross-type wildcard match. The `Domain` entity uses the same `type`+`name` canonical key as the DNS connector's, so the two merge into one graph node instead of duplicating — verified by an integration test.
+- **Zero changes to `investigation.ts`**: the connector is self-contained (own cache TTL, own timeout). Its timeout defaults to 4000ms, deliberately *below* the orchestrator's 5000ms per-connector default, so its own descriptive ERROR wins the race rather than surfacing as a generic outer TIMEOUT.
+
+**Did**: implemented `src/connectors/techfingerprint.ts`; added `tests/techfingerprint-connector.test.ts` (12 unit tests) and `tests/techfingerprint-integration.test.ts` (4 pipeline tests); registered the connector in `server.ts`'s DI array (one import + two lines); updated `README.md` (feature list, architecture diagram, env vars), `CHANGELOG.md`, `.env.example`, `DEPLOYMENT.md`, `docs/CONNECTOR_SCORECARD.md`, and the memory docs.
+
+**Notable finding while testing**: the first integration-test run failed in a way that was *my test's* fault, not the connector's — `InvestigationService` keeps **static** full-investigation and per-connector caches that outlive individual service instances, so later tests were being served earlier tests' cached results. Correct production behavior; the fix was a distinct hostname per test (documented inline in the test file) rather than weakening the service. Worth remembering when writing tests for the next connector.
+
+**Real-domain smoke tests** (checklist requirement) exercised all three status paths against live infrastructure, and each SUCCESS was independently verified with `curl` rather than trusted:
+- `github.com` → SUCCESS, GitHub Pages via `x-github-request-id` (confirmed present on GET).
+- `registry.npmjs.org` → SUCCESS, Cloudflare at confidence 93 (90 base + 3 corroboration, since both `server: cloudflare` and `cf-ray` matched — both confirmed present).
+- `pypi.org` → SUCCESS, Gunicorn via `server: gunicorn` (confirmed; correctly reported *no* version, since the header carries none).
+- `proxy.golang.org` → NO_DATA (fetched cleanly, no signature matched).
+- Hosts denied by this sandbox's egress policy → ERROR, never a false NO_DATA — an unintended but valid negative test.
+
+**Verification**: `npm test` 256/256 (was 240), `npm run lint` clean, `npm run build` succeeds.
+
+**Checklist status** (`docs/CONNECTOR_RELEASE_CHECKLIST.md`): implemented, status semantics verified, diagnostics included, evidence validated, unit + integration tests added, test/build passing, real-domain smoke tests run, README/CHANGELOG/scorecard updated. Not done (user's call, and outside "implement the connector"): PR creation, squash merge, alpha tag.
+
+**Next**: `CertificateTransparencyConnector`, the second of the four v1.1 connectors.
+
+---
+
 ## 2026-07-28 — Release-readiness correction (post-Milestone 2)
 
 **Prompted by**: user instruction for a small, tightly-scoped correction — fix `PORT` handling, reconcile the two memory docs Milestone 2's narrowed scope had left stale, verify, and keep the diff minimal. Same standing constraints as Milestone 2 (no architecture/auth/investigation/connector/evidence/validation/scoring/frontend changes), plus an explicit request to explain architectural decisions before making them.

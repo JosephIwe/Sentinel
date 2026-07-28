@@ -83,7 +83,16 @@ Reconstructed from git history plus this session's audit. Dates are commit/sessi
 - Fixed `server.ts` hardcoding `const PORT = 3000` without reading `process.env.PORT`, despite `DEPLOYMENT.md` and the `Dockerfile` documenting `PORT` as configurable — any PaaS assigning a non-3000 port would have had the container listen on the wrong one. Now honors `process.env.PORT` with a validated fallback to `3000`. Verified across custom/unset/invalid-value cases.
 - Reconciled `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` (this file), which had been deliberately left untouched during Milestone 2 under that session's narrowed doc-update scope and had gone stale.
 
-## Open (as of 2026-07-28, end of release engineering)
+## v1.1 connector expansion begins: Technology Fingerprinting (2026-07-28)
+
+- Shipped `TechnologyFingerprintConnector` (Beta) — the first connector added since the release-engineering work, and the first of the four planned v1.1 connectors.
+- Identifies web technologies (server, CMS, framework, CDN, language) from a single HTTPS GET, using only directly observable signal: response headers, `Set-Cookie` names, `<meta name="generator">`, and distinctive markup/asset markers. Every detection records `matchedOn` and the literal `matchedValue`, so any finding is independently re-verifiable; versions are reported only when they literally appear in the matched text.
+- Emits `Technology` entities linked to the target `Domain` via a `RUNS_TECHNOLOGY` relationship. Uses a distinct `Technology` type rather than `Generic`, deliberately avoiding the entity resolver's known cross-type wildcard match.
+- Registered in the live pipeline via the existing DI array in `server.ts`; zero changes to `investigation.ts` (the connector is self-contained, with its own cache TTL and a 4s timeout set below the orchestrator's 5s default so its own descriptive error wins).
+- 16 new tests (12 unit covering all three status paths + anti-fabrication guarantees, 4 pipeline-integration covering entity merging and failure isolation). Suite grew 240 → 256, all passing; lint clean; build succeeds.
+- Real-domain smoke tests exercised every status path against live hosts: `github.com` and `pypi.org` → SUCCESS with independently verified detections, `proxy.golang.org` → NO_DATA, blocked hosts → ERROR (never a false "no technologies").
+
+## Open (as of 2026-07-28)
 
 - rc.1 is still the declared version; a real `v1.0.0` tag has not been cut.
-- Release engineering is complete. Milestone 3 in `docs/ROADMAP.md` is test coverage & quality hardening; the product-side next step is the first v1.1 connector (`TechnologyFingerprintConnector`) per the connector expansion plan.
+- Next connectors per `docs/ROADMAP.md`: `CertificateTransparencyConnector`, `ShodanConnector`, `Crawl4AI WebFootprintConnector`. Milestone 3 (test coverage & quality hardening) also remains available as a parallel track.

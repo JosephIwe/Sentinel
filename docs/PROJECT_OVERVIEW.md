@@ -4,11 +4,11 @@ _Living reference document. Update when architecture, stack, or structure actual
 
 ## What Sentinel is
 
-Sentinel is an API-first threat-intelligence/OSINT orchestration platform. Given a domain, email, company, username, or IP, it fans the query out across parallel connectors that each query a **real external source** (WHOIS, DNS, GitHub, security.txt/RFC 9116), merges and deduplicates the resulting entities into a canonical graph, synthesizes a report via Google Gemini (with a fully deterministic fallback if no AI key is configured), and assigns confidence/risk scores from an explicit, auditable rule set rather than model inference. Every AI-generated claim is passed through a hallucination detector before reaching the client.
+Sentinel is an API-first threat-intelligence/OSINT orchestration platform. Given a domain, email, company, username, or IP, it fans the query out across parallel connectors that each query a **real external source** (WHOIS, DNS, GitHub, security.txt/RFC 9116, technology fingerprinting), merges and deduplicates the resulting entities into a canonical graph, synthesizes a report via Google Gemini (with a fully deterministic fallback if no AI key is configured), and assigns confidence/risk scores from an explicit, auditable rule set rather than model inference. Every AI-generated claim is passed through a hallucination detector before reaching the client.
 
 ## Core invariant
 
-**Never present fabricated data as verified evidence.** This isn't aspirational — it's the reason three connectors (Google Search, legacy GitHub, News) were deleted from the live pipeline in July 2026 after being found to return invented results dressed up as high-confidence findings. A `verified` flag is carried structurally through connector results and evidence so this can't regress silently. (Ironically, the frontend currently violates this same principle in one place — see `docs/KNOWN_ISSUES.md` #4, the Dashboard's fake usage chart.)
+**Never present fabricated data as verified evidence.** This isn't aspirational — it's the reason three connectors (Google Search, legacy GitHub, News) were deleted from the live pipeline in July 2026 after being found to return invented results dressed up as high-confidence findings. A `verified` flag is carried structurally through connector results and evidence so this can't regress silently.
 
 ## Goals
 
@@ -30,11 +30,11 @@ Sentinel is an API-first threat-intelligence/OSINT orchestration platform. Given
                        │  (src/services/           │  circuit breaker + retry
                        │   investigation.ts)        │  + timeout per connector
                        └────────────┬─────────────┘
-                    ┌───────────────┼───────────────┬───────────────┐
-              ┌─────▼─────┐  ┌──────▼──────┐  ┌──────▼──────┐ ┌─────▼──────┐
-              │  WHOIS    │  │     DNS     │  │   GitHub    │ │ SecurityTxt│
-              │ Connector │  │  Connector  │  │  Intel      │ │ (Beta)     │
-              └───────────┘  └─────────────┘  └─────────────┘ └────────────┘
+          ┌───────────┬───────────┼───────────┬───────────┐
+    ┌─────▼─────┐┌────▼────┐┌─────▼─────┐┌────▼────┐┌─────▼─────┐
+    │   WHOIS   ││   DNS   ││  GitHub   ││security ││   Tech    │
+    │ Connector ││Connector││  Intel    ││  .txt   ││Fingerprint│
+    └───────────┘└─────────┘└───────────┘└─────────┘└───────────┘
                                     │
                        ┌────────────▼─────────────┐
                        │   EntityResolutionService │  dedupe & canonicalize
@@ -58,7 +58,7 @@ Sentinel is an API-first threat-intelligence/OSINT orchestration platform. Given
                             Structured Report
 ```
 
-`InvestigationWorker` (`src/services/investigationWorker.ts`) runs the same pipeline asynchronously for queued jobs, with progress polling and (currently incomplete — see Known Issues) cancellation.
+`InvestigationWorker` (`src/services/investigationWorker.ts`) runs the same pipeline asynchronously for queued jobs, with progress polling and real cancellation (an `AbortSignal` is threaded into the connectors and the AI call).
 
 ## Tech stack
 
@@ -68,7 +68,7 @@ Sentinel is an API-first threat-intelligence/OSINT orchestration platform. Given
 | Backend | Express 4, Node.js, single process | bundled to CJS via esbuild |
 | Frontend | React 19, Vite 6, Tailwind CSS 4 | served from the same process/port |
 | AI | Google Gemini (`@google/genai`) | model hardcoded, not env-configurable (see `docs/KNOWN_ISSUES.md`) |
-| Testing | Vitest 4, Supertest | 240 tests, backend-heavy, zero frontend component tests |
+| Testing | Vitest 4, Supertest | 256 tests, backend-heavy, zero frontend component tests |
 | Auth | HMAC-signed session cookies + API-key headers | no password/OTP — explicit demo-mode design |
 | Persistence | None — in-memory only | disclosed limitation, not yet started |
 
@@ -80,13 +80,14 @@ Origin note: `vite.config.ts` still carries leftover comments referencing "AI St
 Sentinel/
 ├── server.ts                      # Express gateway: routing, auth, rate limiting, docs
 ├── src/
-│   ├── api/                       # OpenAPI spec (incomplete) & Swagger UI renderer
+│   ├── api/                       # OpenAPI spec (all live routes) & Swagger UI renderer
 │   ├── components/                # React views: App shell, Dashboard, Playground,
 │   │                               #   History, Docs, Auth, Landing, EntityGraph,
 │   │                               #   InvestigationReport (2055 lines, needs splitting)
 │   ├── config/scoringRules.json   # Rule metadata (id/points/explanation) — NOT the
 │   │                               #   actual match logic, which is hardcoded in scoring.ts
-│   ├── connectors/                 # whois.ts, dns.ts, github-intel.ts, securitytxt.ts (live)
+│   ├── connectors/                 # whois.ts, dns.ts, github-intel.ts, securitytxt.ts,
+│   │                               #   techfingerprint.ts (live)
 │   │                               #   + google.ts, news.ts, github.ts (dead legacy code,
 │   │                               #   explicitly excluded from the live pipeline)
 │   ├── services/                   # investigation, investigationWorker, intelligence,
@@ -99,14 +100,14 @@ Sentinel/
 │                                    #   observability.ts, betaGate.ts, ssrfGuard duplicate*
 ├── sdks/                           # TypeScript & Python clients — cover core investigation
 │                                    #   flows only, not auth/keys/jobs/playground/metrics
-└── tests/                          # 21 Vitest files, backend/service-heavy
+└── tests/                          # 23 Vitest files, backend/service-heavy
 ```
 
 \* `src/utils/validation.ts` duplicates `utils/validation.ts`'s logic with a different signature and is unused dead code (see `docs/KNOWN_ISSUES.md`).
 
 ## Existing features
 
-- Parallel multi-source investigation (WHOIS, DNS, GitHub, security.txt) with per-connector timeout/retry/circuit breaker.
+- Parallel multi-source investigation (WHOIS, DNS, GitHub, security.txt, technology fingerprinting) with per-connector timeout/retry/circuit breaker.
 - Deterministic confidence & risk scoring from `src/config/scoringRules.json` + `scoring.ts`.
 - AI meta-analysis (Gemini) with hallucination detection and evidence grounding; deterministic fallback when no AI key is present.
 - Entity resolution/dedup across connector results.
@@ -114,7 +115,7 @@ Sentinel/
 - API key management (create/list/revoke/rotate), each with its own rate limit.
 - Sliding-window rate limiting by API key or IP.
 - Structured JSON logging, request-ID correlation, `/health` `/ready` `/version` `/metrics`.
-- Swagger UI at `/docs`, generated from a hand-maintained OpenAPI 3.1 spec (incomplete — 4 live routes undocumented).
+- Swagger UI at `/docs`, generated from a hand-maintained OpenAPI 3.1 spec covering all live routes.
 - Web UI: Landing, Auth, Dashboard, Playground (interactive investigation runner), History, Docs, print/PDF report export.
 - Entity relationship graph visualization with real force-directed layout, pan/zoom, keyboard navigation.
 - Official TypeScript and Python SDKs.

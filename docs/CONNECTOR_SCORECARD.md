@@ -10,6 +10,7 @@ see `CHANGELOG.md` for the history of each addition.
 | DNS | Stable | TBD | TBD | 0 | Low |
 | GitHub Intelligence | Stable | TBD | TBD | 0 | Low |
 | SecurityTxt | Beta | TBD | TBD | 0 | Medium |
+| Technology Fingerprint | Beta | TBD | TBD | 0 | Medium |
 
 **Columns**
 

@@ -46,7 +46,7 @@ _Last reviewed: 2026-07-28, after the post-Milestone-2 release-readiness correct
 
 ## Connectors (`docs/CONNECTOR_SCORECARD.md`)
 
-WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted (recent sessions were explicitly scoped away from touching connectors).
+WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Technology Fingerprint: Beta (shipped 2026-07-28). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted (recent sessions were explicitly scoped away from touching connectors).
 
 ## Status of this documentation system
 

@@ -8,6 +8,7 @@ import { WhoisConnector } from "./src/connectors/whois";
 import { DnsConnector } from "./src/connectors/dns";
 import { GithubIntelligenceConnector } from "./src/connectors/github-intel";
 import { SecurityTxtConnector } from "./src/connectors/securitytxt";
+import { TechnologyFingerprintConnector } from "./src/connectors/techfingerprint";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
 import { InvestigationWorker } from "./src/services/investigationWorker";
@@ -649,12 +650,14 @@ const whoisConnector = new WhoisConnector();
 const dnsConnector = new DnsConnector();
 const githubIntelligenceConnector = new GithubIntelligenceConnector();
 const securityTxtConnector = new SecurityTxtConnector();
+const technologyFingerprintConnector = new TechnologyFingerprintConnector();
 
 const investigationService = new InvestigationService([
   whoisConnector,
   dnsConnector,
   githubIntelligenceConnector,
   securityTxtConnector,
+  technologyFingerprintConnector,
 ]);
 
 // Seed in-memory list tracking successful multi-source intelligence reports.

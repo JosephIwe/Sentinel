@@ -1,35 +1,44 @@
 # Next Session
 
-_Written 2026-07-28, end of the post-Milestone-2 release-readiness correction. Read this first, then `docs/CURRENT_STATUS.md` for detail._
+_Written 2026-07-28, after shipping the `TechnologyFingerprintConnector`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
 
 ## Where things stand
 
-**Release engineering is complete.** Milestones 0, 1, and 2 are all done, plus a follow-up correction. The project now has: no cross-tenant IDOR, working mobile nav and correct relationship rendering, CI, a Dockerfile, a fully-documented OpenAPI spec, zero `npm audit` findings, `PORT` honored from the environment, and internally-consistent version numbers and documentation.
+Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion has begun**. The first of the four planned connectors — `TechnologyFingerprintConnector` — is shipped as Beta and registered in the live pipeline.
 
-All memory docs (`KNOWN_ISSUES.md`, `MILESTONES.md`, `PROJECT_OVERVIEW.md`, `CURRENT_STATUS.md`, this file) were reconciled in this correction and now agree on current state — the Milestone 2 housekeeping debt is cleared. Note that `KNOWN_ISSUES.md` item numbers renumber on each reconciliation; reference issues by description, not number.
+Suite is at **256 tests, all passing**; lint clean; build succeeds; 0 `npm audit` findings.
 
-## Highest-priority task: the first v1.1 connector — `TechnologyFingerprintConnector`
+## Highest-priority task: `CertificateTransparencyConnector`
 
-The project is ready to begin implementing new connectors. Per `docs/ROADMAP.md`'s v1.1 connector expansion, the next connector is `TechnologyFingerprintConnector`, followed by `CertificateTransparencyConnector`, `ShodanConnector`, and `Crawl4AI WebFootprintConnector`.
+The second of the four v1.1 connectors per `docs/ROADMAP.md`. It queries Certificate Transparency logs (e.g. crt.sh) for certificates issued to the target domain — surfacing subdomains, issuance history, and issuing CAs.
 
-**Follow `docs/CONNECTOR_RELEASE_CHECKLIST.md` exactly** — one connector at a time: implement → verify `SUCCESS`/`NO_DATA`/`ERROR` semantics → diagnostics → evidence validation → unit + integration tests → `npm test` + `npm run build` → real-domain smoke test → update README/CHANGELOG/`docs/CONNECTOR_SCORECARD.md` → PR → squash merge → alpha tag.
+**Follow `docs/CONNECTOR_RELEASE_CHECKLIST.md` exactly.** `src/connectors/techfingerprint.ts` is the freshest reference implementation and the closest structural match (single outbound HTTP call, same status semantics, same caching/timeout pattern).
 
-**Non-negotiable when writing it** (see `docs/TECH_DECISIONS.md`): the connector must query a real external source and must never synthesize evidence. `NO_DATA` and `ERROR` are correct outcomes; fabricated data is not. This rule exists because three connectors were deleted in July for violating it. Any code path that fetches a user-supplied host must go through `src/utils/ssrfGuard.ts`'s `safeFetch`.
+**Non-negotiables, learned the hard way on this project:**
+- Query a **real external source**; never synthesize evidence. `NO_DATA` and `ERROR` are correct outcomes.
+- Record on every finding *what exactly was observed* and *where it came from*, so an analyst can independently re-verify it. Never report a value you cannot point at in the raw response.
+- Any fetch of a user-supplied host must go through `src/utils/ssrfGuard.ts`'s `safeFetch`.
+- A failure to reach the source is `ERROR` — never a false "nothing found".
+- Set the connector's internal timeout *below* the orchestrator's 5000ms default so its own descriptive error surfaces rather than a generic outer TIMEOUT.
+- Emit a specific entity `type`, never `Generic` (which is eligible for the entity resolver's cross-type wildcard match).
 
-## Alternative: Milestone 3 — Test Coverage & Quality Hardening
+**Testing gotcha that will bite you**: `InvestigationService` keeps *static* full-investigation and per-connector caches that outlive service instances. Integration tests must use a **distinct hostname per test**, or later tests silently receive earlier tests' cached results. See the note at the top of `tests/techfingerprint-integration.test.ts`.
 
-If the priority is hardening over new capability, `docs/ROADMAP.md`'s Milestone 3 is the other reasonable next step:
-1. Route-layer tests for `/intelligence/analyze` (services are unit-tested, this route isn't).
+## Alternative parallel track: Milestone 3 — Test Coverage & Quality Hardening
+
+If hardening is the priority over new capability:
+1. Route-layer tests for `/intelligence/analyze` (the service is unit-tested, the route isn't).
 2. A dedicated test file for `entityResolution.ts` (none exists).
 3. A dedicated test file for the `whois.ts` connector (none exists, despite being load-bearing for scoring).
-4. Investigate/fix the `tests/investigation-rate-limit.test.ts` teardown race (intermittent, not reliably reproduced).
-5. First React component tests (`@testing-library/react` isn't a dependency yet).
+4. The `tests/investigation-rate-limit.test.ts` teardown race (intermittent, not reliably reproduced).
+5. First React component tests (`@testing-library/react` still isn't a dependency).
 
 ## Known gaps carried forward
 
-- **Dead legacy connectors** (`src/connectors/google.ts`, `news.ts`, `github.ts`) are still in the tree. Flagged across four sessions now, never removed, because sessions kept being explicitly scoped away from touching connectors. The upcoming connector work is the natural time to finally delete them (retire/repoint `tests/legacy-connectors.test.ts` first).
-- **Docker build not fully verified.** `docker build` couldn't run in these sandboxes — Docker Hub's CDN is denied by the environment's egress policy (403, confirmed repeatedly, not transient). The `Dockerfile` was verified as far as possible short of that: the image's exact install (`npm ci --omit=dev`) and start (`node dist/server.cjs`) commands were run standalone and both work. Running `docker build . && docker run -p 3000:3000 <image>` once in an environment with normal registry access would close this for good.
+- **Dead legacy connectors** (`src/connectors/google.ts`, `news.ts`, `github.ts`) are still in the tree — flagged across five sessions now. Since connector work is now the active track, this is the natural moment to finally delete them (retire/repoint `tests/legacy-connectors.test.ts` first).
+- **Docker build not fully verified.** `docker build` can't run in these sandboxes (Docker Hub's CDN is denied by the egress policy, confirmed repeatedly). The image's exact install and start commands were verified standalone. One `docker build . && docker run -p 3000:3000 <image>` in an unrestricted environment would close this.
+- **Technology fingerprint signature coverage is intentionally conservative.** The signature set covers common, unambiguous cases only. Expanding it is safe *provided* each new signature stays specific enough that a match isn't plausibly coincidental — resist the temptation to add fuzzy heuristics, which is precisely how fabricated data creeps back in.
 
 ## Keeping this file useful
 
-Per the user's standing instructions: update project documentation at the end of every work session with what actually got done and what's next. Recent sessions have sometimes narrowed which docs to touch — when the scope isn't stated, update the full `docs/` set, since a narrowed update is what created the reconciliation debt this session had to clear.
+Update project documentation at the end of every work session with what actually got done and what's next. When the session's doc scope isn't stated explicitly, update the full `docs/` set — a narrowed update is what created the reconciliation debt an earlier session had to clear.
