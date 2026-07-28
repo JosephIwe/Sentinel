@@ -67,7 +67,23 @@ Reconstructed from git history plus this session's audit. Dates are commit/sessi
 - Verified with `npm run test` (240/240), `npm run lint`, `npm run build`, plus a manual Playwright smoke-test pass against the running dev server with reviewed screenshots (mobile nav, login, key creation, a full investigation run, relationships rendering real data, and a history-restore round trip).
 - Full detail in `docs/CHANGELOG_AI.md`; issue tracking updated in `docs/KNOWN_ISSUES.md` — 0 Critical, 0 High issues remain open.
 
-## Open (as of 2026-07-28, end of Milestone 1)
+## Milestone 2: release engineering & project readiness (2026-07-28)
+
+- Added `.github/workflows/ci.yml` (`npm ci` → lint → test → build on push/PR, Node 18) — nothing previously gated a regressing PR.
+- Added a production multi-stage `Dockerfile` and `.dockerignore`, matching the layout `DEPLOYMENT.md` had only ever documented inline.
+- Completed the OpenAPI spec for the 4 previously-undocumented live routes (`/jobs`, `/playground/transform`, `/metrics`, `/intelligence/analyze`), documented against the real handler shapes and verified live — 15/15 registered routes present, Swagger UI renders.
+- Fixed version drift: `GET /version` and the OpenAPI spec's `info.version` both hardcoded `"1.0.0"` instead of `"1.0.0-rc.1"`. Version now consistent across `package.json`, `VERSION.md`, `README.md`, `server.ts`, `src/api/openapi.ts`, `DEPLOYMENT.md`, and both SDKs.
+- `npm audit fix` for the postcss path-traversal advisory (patch-level, non-breaking) — 0 vulnerabilities remain.
+- Removed confirmed dead code within the session's constraints: the unused `"@/*"` tsconfig alias and the stale `npm run clean` target.
+- Documentation cleanup: `SECURITY.md`'s unverified contact replaced with GitHub Security Advisories; placeholder repo URLs in `CONTRIBUTING.md`/`package.json` corrected; two undocumented env vars added to `DEPLOYMENT.md`; a `CHANGELOG.md` entry that had been truncated mid-sentence since a much earlier commit fixed, and `[Unreleased]` backfilled with the Milestone 0/1/2 changes.
+- Verified: 240/240 tests, lint clean, build succeeds, 0 audit findings, CI YAML validated. `docker build` could not be run — this sandbox's egress policy denies Docker Hub's CDN — so the image's exact install and start commands were verified standalone instead.
+
+## Release-readiness correction (2026-07-28, post-Milestone 2)
+
+- Fixed `server.ts` hardcoding `const PORT = 3000` without reading `process.env.PORT`, despite `DEPLOYMENT.md` and the `Dockerfile` documenting `PORT` as configurable — any PaaS assigning a non-3000 port would have had the container listen on the wrong one. Now honors `process.env.PORT` with a validated fallback to `3000`. Verified across custom/unset/invalid-value cases.
+- Reconciled `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` (this file), which had been deliberately left untouched during Milestone 2 under that session's narrowed doc-update scope and had gone stale.
+
+## Open (as of 2026-07-28, end of release engineering)
 
 - rc.1 is still the declared version; a real `v1.0.0` tag has not been cut.
-- Milestone 2 (CI, Docker, OpenAPI completeness, npm audit fix, doc/contact cleanup) is next per `docs/ROADMAP.md`.
+- Release engineering is complete. Milestone 3 in `docs/ROADMAP.md` is test coverage & quality hardening; the product-side next step is the first v1.1 connector (`TechnologyFingerprintConnector`) per the connector expansion plan.

@@ -52,7 +52,13 @@ const getAiClient = () => {
 };
 
 export const app = express();
-const PORT = 3000;
+
+function resolvePort(): number {
+  const parsed = parseInt(process.env.PORT || "", 10);
+  if (!isNaN(parsed) && parsed > 0) return parsed;
+  return 3000;
+}
+const PORT = resolvePort();
 
 // Apply global request correlation tracking and performance auditing first,
 // so a request ID exists even if body parsing below fails.

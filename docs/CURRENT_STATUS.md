@@ -1,6 +1,6 @@
 # Current Status
 
-_Last reviewed: 2026-07-28, after Milestone 2 implementation, against the working tree on `claude/project-memory-review-cqx488`. Supersedes the earlier same-day version of this file (pre-Milestone-2). Note: this update, per explicit session instructions, did not touch `docs/KNOWN_ISSUES.md` or `docs/MILESTONES.md` — their item numbers/counts below are as of the Milestone 1 pass and are now somewhat stale; treat this file's prose as the current source of truth until they're refreshed._
+_Last reviewed: 2026-07-28, after the post-Milestone-2 release-readiness correction, against the working tree on `claude/project-memory-review-cqx488`. `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` have now been reconciled against this file — all three agree._
 
 ## Release state
 
@@ -16,7 +16,7 @@ _Last reviewed: 2026-07-28, after Milestone 2 implementation, against the workin
 - `npm audit`: **0 vulnerabilities** (was 1 high-severity postcss advisory, fixed via `npm audit fix` — a patch-level bump, 8.5.17 → 8.5.24, `package-lock.json`-only diff).
 - OpenAPI spec now documents all 15 live routes (was 11) — verified live against the built server (`/api/v1/openapi.json` and Swagger UI at `/docs` both checked).
 - Docker: a production `Dockerfile` + `.dockerignore` now exist, matching `DEPLOYMENT.md`'s documented layout. `docker build` itself could not be completed in this sandbox — its egress policy explicitly denies Docker Hub's CDN backend (403, policy-level, reproduced twice, not transient) — so the exact commands the image runs were verified standalone instead: `npm ci --omit=dev` installs cleanly, and `node dist/server.cjs` boots and correctly serves `/health`, `/version`, and the frontend with only production dependencies present. High confidence the image builds correctly in a normal CI environment; not independently confirmed in-session.
-- **Found, not fixed (out of scope this session)**: `server.ts` hardcodes `PORT = 3000` and never reads `process.env.PORT`, despite `DEPLOYMENT.md` and the Dockerfile documenting `PORT` as configurable. Works today only because the documented default happens to match the hardcoded value.
+- **Fixed in the follow-up release-readiness correction**: `server.ts` previously hardcoded `PORT = 3000` and never read `process.env.PORT`, despite `DEPLOYMENT.md` and the Dockerfile documenting it as configurable. Now honors `process.env.PORT` with a validated fallback to `3000`; verified at runtime for custom, unset, and invalid values.
 
 ## Security — full picture
 
@@ -42,12 +42,12 @@ _Last reviewed: 2026-07-28, after Milestone 2 implementation, against the workin
 - `InvestigationReport.tsx` is still a 2055-line single component with no memoization; duplicated cache/color-logic boilerplate across connectors and components — Milestone 4.
 - Accessibility gaps (unlabeled inputs, missing ARIA tab roles, tiny low-contrast text) — Milestone 5.
 - Hallucination detector's proper-noun check is bypassable; entity resolution can false-merge on the `Generic` type wildcard; `scoringRules.json` isn't actually config-driven — Milestone 6.
-- The dead legacy connectors and the `"engines"` field/`vite.config.ts` cleanup, deferred from Milestone 2 under this session's explicit constraints — worth folding into whichever future session is allowed to touch connectors, or a small standalone hygiene pass.
+- The dead legacy connectors and the `"engines"` field/`vite.config.ts` cleanup, deferred from Milestone 2 under that session's explicit constraints — worth folding into whichever future session is allowed to touch connectors, or a small standalone hygiene pass.
 
 ## Connectors (`docs/CONNECTOR_SCORECARD.md`)
 
-WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted (this session's constraints excluded touching connectors at all).
+WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted (recent sessions were explicitly scoped away from touching connectors).
 
 ## Status of this documentation system
 
-`docs/` contains the full set: `PROJECT_OVERVIEW.md`, `CURRENT_STATUS.md` (this file), `MILESTONES.md`, `ROADMAP.md`, `TECH_DECISIONS.md`, `KNOWN_ISSUES.md`, `CHANGELOG_AI.md`, `NEXT_SESSION.md`, plus the pre-existing `CONNECTOR_SCORECARD.md`/`CONNECTOR_RELEASE_CHECKLIST.md`. The 7-milestone roadmap was approved by the user on 2026-07-28; **Milestones 0, 1, and 2 are complete**; Milestone 3 has not started. `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` were intentionally not updated this session (explicit instruction scoped doc updates to this file, `ROADMAP.md`, `NEXT_SESSION.md`, and `CHANGELOG_AI.md` only) — they should be reconciled against this file's content in a future session.
+`docs/` contains the full set: `PROJECT_OVERVIEW.md`, `CURRENT_STATUS.md` (this file), `MILESTONES.md`, `ROADMAP.md`, `TECH_DECISIONS.md`, `KNOWN_ISSUES.md`, `CHANGELOG_AI.md`, `NEXT_SESSION.md`, plus the pre-existing `CONNECTOR_SCORECARD.md`/`CONNECTOR_RELEASE_CHECKLIST.md`. The 7-milestone roadmap was approved by the user on 2026-07-28; **Milestones 0, 1, and 2 are complete**, and release engineering is finished. All memory docs were reconciled in the post-Milestone-2 correction, so `KNOWN_ISSUES.md`, `MILESTONES.md`, `PROJECT_OVERVIEW.md`, and this file now agree on current state. Note that `KNOWN_ISSUES.md` item numbers renumber on each reconciliation — reference issues by description, not number.
