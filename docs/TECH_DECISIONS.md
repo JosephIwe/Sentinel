@@ -33,3 +33,15 @@ API keys, investigation history, and async job state (`server.ts`, `src/services
 ## Rate limiting is store-agnostic by design
 
 `utils/rate-limiter.ts` implements sliding-window rate limiting keyed by API key or client IP with an in-memory store today, but the interface is meant to accept a Redis-backed store later without changing the call site or `DistributedRateLimiter.check`'s public signature. Currently process-local, so horizontally-scaled deployments don't share limiter state across nodes — documented, not yet fixed.
+
+## Open architectural gap: API-key auth has no per-tenant identity (found 2026-07-28, not yet resolved)
+
+Every API key currently resolves to one shared identity, `usr_api_client` (`server.ts:232-239`). This was fine when the API had no multi-tenant data to protect, but it is now the root cause of a critical cross-tenant IDOR (`docs/KNOWN_ISSUES.md` #1) — every key holder can see and mutate every other key holder's keys/jobs/history/reports, because nothing distinguishes them server-side. **This needs a real decision, not a patch**: either (a) each API key carries its own stable owner id, minted at key-creation time and threaded through `req.user`, or (b) API keys are scoped to the session/user that created them and `authenticateRequest` resolves identity from that link. Option (a) is simpler and doesn't require sessions to exist for API-only clients; recorded here so the eventual fix is made deliberately rather than as an incidental side effect of an ownership-check patch. Do not "fix" this by just adding `.filter(k => k.ownerId === req.user.id)` everywhere without first deciding where `ownerId` actually comes from — that's the real design question.
+
+## scoringRules.json is metadata, not executable configuration
+
+`src/config/scoringRules.json` supplies each rule's `id`/`name`/`points`/`explanation` for display and auditability, but the actual matching logic is a hardcoded TypeScript `switch` on rule `id` in `scoring.ts`. This means the file is *not* safely hand-editable the way its existence implies — adding a new points value or explanation is safe, but renaming an `id` (or adding a new rule) requires a matching code change in `scoring.ts`, and a mismatch silently no-ops the rule rather than erroring. This is a real design limitation worth knowing before treating the JSON as a config surface for non-engineers.
+
+## Origin note: scaffolded from a Google AI Studio template
+
+`vite.config.ts` retains comments referencing "AI Studio" and a `DISABLE_HMR` flag from the project's origin. Not itself a problem, but explains some of the scaffold-era debt (unused `@/*` tsconfig alias, a stale `npm run clean` target referencing a `server.js` path the build no longer produces) — worth knowing so these read as cleanup opportunities, not mysteries.

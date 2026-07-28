@@ -1,53 +1,56 @@
 # Current Status
 
-_Last reviewed: 2026-07-28, from repo state at commit `7cf18b2` (branch `main` / `claude/project-memory-review-cqx488`, working tree clean)._
+_Last reviewed: 2026-07-28 (full-repository audit), against commit `f995437` on `main` / `claude/project-memory-review-cqx488`, working tree clean before this session's doc updates. Supersedes the same-day earlier version of this file, which was based on document review only, not a direct code/test audit._
 
 ## Release state
 
-- **Declared version**: `1.0.0-rc.1` (`package.json`, `VERSION.md`, `README.md` badge all agree — none have been bumped to rc.2 despite a `release/v1.0.0-rc.2` branch having been merged for the private-beta gate work).
-- Private-beta access gate is live in front of the web UI (merged 2026-07-20).
-- No `v1.0.0` tag has been cut yet.
+- Declared version: `1.0.0-rc.1` (`package.json`, `VERSION.md`, README badge). `GET /version` actually returns hardcoded `"1.0.0"` — drift between the two (Known Issues #26).
+- No `v1.0.0` tag cut yet. Private-beta access gate is live in front of the web UI.
 
-## Security — RELEASE_CHECKLIST.md "Must Fix Before Launch" (verified against code, all 5 resolved)
+## Verified build health (ran directly, not inferred from docs)
 
-- Hardcoded `sn_live_...` API keys removed; `generateSecret()` now uses `crypto.randomBytes` (`server.ts:163`).
-- Shared global `currentUser` replaced with per-client session isolation (`tests/session.test.ts` exists and covers concurrent sessions).
-- SSRF protection added: `src/utils/ssrfGuard.ts` (`safeFetch`) is wired into `src/services/investigation.ts`'s GitHub-discovery homepage fetch, with its own test suite (`tests/ssrf-guard.test.ts`).
-- WHOIS scoring bug fixed: `conf_whois` / `conf_missing_critical` in `src/services/scoring.ts` now explicitly exclude `ev_whois_fallback` (mirrors the existing `ev_dns_no_records` exclusion).
-- GitHub connector now distinguishes rate-limit/network errors (`status: "ERROR"`) from genuine absence (`status: "NO_DATA"`) — `src/connectors/github-intel.ts:194`.
+- `npm install`: clean, 265 packages, 1 high-severity `npm audit` finding (postcss ≤8.5.17 path traversal, transitive via Tailwind v4 — Known Issues #12).
+- `npm run test`: **229/229 tests pass** across 20 files. 2 non-fatal `EnvironmentTeardownError` unhandled-rejection warnings logged from `tests/investigation-rate-limit.test.ts` on every run (Known Issues #19) — currently cosmetic, but will look like flakiness once CI exists.
+- `npm run lint` (`tsc --noEmit`): clean, zero errors.
+- `npm run build`: succeeds. Client 397kB JS (gzip 101.5kB) + 81.6kB CSS (gzip 12.9kB); server bundle 242.3kB.
 
-**All launch-blocking items from the release audit are closed.** The remaining gap between rc.1 and a real v1.0.0 tag is the "Recommended Before Launch" list below, which is still open.
+## Security — full picture
 
-## Open — RELEASE_CHECKLIST.md "Recommended Before Launch"
+**Resolved** (verified in code, from the prior `RELEASE_CHECKLIST.md` audit): hardcoded API keys, shared global `currentUser` session bug, SSRF exposure in GitHub discovery, WHOIS-fallback scoring bug, GitHub rate-limit/`NO_DATA` conflation.
 
-- [ ] OpenAPI spec (`src/api/openapi.ts`) still only documents `/auth/*`, `/keys*`, `/investigate`, `/investigations*`, `/history`, `/reports/{id}`. Missing: `/jobs`, `POST /playground/transform`, `GET /metrics`, `POST /intelligence/analyze` — all live, authenticated routes not visible in the `/docs` Swagger UI.
-- [ ] `server.ts` still returns raw `err.message` to clients unconditionally in 4 places (lines ~563, ~865, ~885, ~902) instead of gating detail behind `NODE_ENV !== "production"` the way `utils/observability.ts`'s central error handler does.
-- [ ] No CI workflow exists (`.github/workflows/` is absent) — nothing blocks a PR that breaks `npm run test` or `npm run lint`.
-- [ ] Frontend (`src/App.tsx`) still only `console.error`s on failed login/logout/key-management fetches (`handleLoginSuccess`, `handleAddKey`, `handleRevokeKey`, `handleRotateKey`) — no visible UI error state.
-- [ ] `SECURITY.md` still points to unverified `security@sentinelapi.dev`.
-- [ ] `CONTRIBUTING.md` still has the placeholder `git clone https://github.com/your-org/sentinel-api.git` (README's clone URL was already fixed).
+**Newly found in this audit, not previously documented**:
+- **Critical**: cross-tenant IDOR — every API-key holder shares one identity (`usr_api_client`), and `/keys`, `/jobs`, `/history`, `/reports/:id`, `/investigations/:jobId` have no ownership checks. Any authenticated or guest-fallback caller can view/revoke/rotate any other tenant's keys, jobs, history, or reports. **This is the single most severe issue in the codebase** and should be fixed before anything else. See `docs/KNOWN_ISSUES.md` #1.
+- High: a 5th `err.message`-leak site in `utils/observability.ts`'s central `errorHandler` (the other 4, in `server.ts`, were already known).
+- Medium: no `helmet`/CORS hardening; `SESSION_SECRET` silently regenerates per process restart if unset (breaks sessions across restarts/multi-instance, undocumented); IDs use `Math.random()` instead of crypto randomness (secrets themselves are fine).
 
-Already resolved from that same list: DNS `sentinel-gateway.net` fallback substitution is gone (`src/connectors/dns.ts` has no such reference); seeded demo user email is a placeholder domain (`guest@sentinelapi.dev`, `api@sentinelapi.dev`), not a real personal address.
+Full severity-ordered list with file:line citations: `docs/KNOWN_ISSUES.md` (38 items total: 1 Critical, 7 High, 20 Medium, 10 Low).
 
-## Post-launch / acknowledged limitations (not blocking, tracked in `VERSION.md` + checklist)
+## What's genuinely solid
 
-- No `Dockerfile` yet, despite `DEPLOYMENT.md` describing containerized/Cloud Run deployment.
-- API keys, investigation history, and job state are in-memory only — lost on restart (Postgres/Firestore migration is a stated v1.0 goal, not started).
-- Rate limiter (`utils/rate-limiter.ts`) is process-local; no Redis-backed shared store yet for multi-node deployments.
-- No React component tests (`src/components/*.tsx` has zero automated coverage; backend/service coverage is otherwise strong — see `tests/`).
-- No HTTP keep-alive/connection pooling on outbound connector calls (WHOIS/DNS/GitHub/security.txt).
+- Investigation pipeline architecture matches its README description exactly — parallel connectors, real circuit breakers/retries/timeouts, two-tier caching.
+- Hallucination detection and evidence-grounding are real, tested, and structurally enforced — though the proper-noun check itself has a bypassable gap (Known Issues #14).
+- `EntityGraph.tsx` is well-engineered (real force-directed layout, pan/zoom, the only genuinely keyboard-accessible component).
+- `src/utils/entityMatcher.ts`, `reliability.ts`, `logger.ts` are clean, dependency-free, well-tested utility modules.
+- SDKs are field-accurate against the live API for core investigation flows.
+- Backend test coverage is strong for session/auth, SSRF, scoring, rate limiting, hallucination detection, and connector status semantics.
+
+## What's broken or misleading right now
+
+- Dashboard's usage chart is 100% hardcoded fake data presented as live telemetry (Known Issues #4) — directly contradicts the project's own core anti-fabrication principle.
+- Dashboard is permanently disconnected from real Playground activity (`onAddJob` dead code, Known Issues #7).
+- Mobile users below 768px cannot navigate the app at all (Known Issues #6).
+- A duplicated `RelationshipEdge` type has two incompatible shapes between two components — one is likely rendering broken data (Known Issues #8).
+- Job cancellation doesn't actually stop work; cancelled jobs keep burning connector/AI quota (Known Issues #5).
+- Scoring's "newly registered"/"established" domain checks use hardcoded absolute years that silently go stale with time (Known Issues #3).
+
+## Zero React component tests
+
+Confirmed: `@testing-library/react` isn't even a dependency. All 229 passing tests are backend/service-level. This was already flagged as a post-launch item in `RELEASE_CHECKLIST.md`; still true, and now scoped into Milestone 3 of `docs/ROADMAP.md`.
 
 ## Connectors (`docs/CONNECTOR_SCORECARD.md`)
 
-| Connector | Status | Notes |
-|---|---|---|
-| WHOIS | Stable | |
-| DNS | Stable | |
-| GitHub Intelligence | Stable | |
-| SecurityTxt | Beta | Shipped 2026-07-22, RFC 9116 parsing |
+WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline but not deleted (Known Issues #25).
 
-Google Search, legacy GitHub, and News connectors were **removed** (2026-07-16) for returning fabricated data presented as verified evidence. Only connectors that query a real external source ship now — see `docs/TECH_DECISIONS.md`.
+## Status of this documentation system
 
-## Next connector in the pipeline
-
-Per root `ROADMAP.md` / `docs/ROADMAP.md`: `TechnologyFingerprintConnector` is next, followed by `CertificateTransparencyConnector`, `ShodanConnector`, and a `Crawl4AI WebFootprintConnector`. Each follows the one-at-a-time process in `docs/CONNECTOR_RELEASE_CHECKLIST.md`.
+As of this session, `docs/` now contains the full set requested: `PROJECT_OVERVIEW.md`, `CURRENT_STATUS.md` (this file), `MILESTONES.md`, `ROADMAP.md`, `TECH_DECISIONS.md`, `KNOWN_ISSUES.md`, `CHANGELOG_AI.md`, `NEXT_SESSION.md`, plus the pre-existing `CONNECTOR_SCORECARD.md`/`CONNECTOR_RELEASE_CHECKLIST.md`. A 7-milestone prioritized implementation plan has been proposed in `docs/ROADMAP.md` and is **awaiting explicit user approval** before any implementation begins.

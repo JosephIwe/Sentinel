@@ -1,31 +1,38 @@
 # Next Session
 
-_Written 2026-07-28. Read this first, then `docs/CURRENT_STATUS.md` for detail._
+_Written 2026-07-28, end of the full-project-audit session. Read this first, then `docs/CURRENT_STATUS.md` and `docs/KNOWN_ISSUES.md` for detail._
 
 ## Where things stand
 
-- All 5 `RELEASE_CHECKLIST.md` **"Must Fix Before Launch"** items are done (verified in code, not just checked off): no hardcoded API keys, per-client session isolation, SSRF guard on the GitHub-discovery fetch, WHOIS scoring-fallback bug fixed, GitHub rate-limit vs. `NO_DATA` distinguished.
-- Declared version is still `1.0.0-rc.1` everywhere (`package.json`, `VERSION.md`, README badge) — no `v1.0.0` tag exists yet.
-- `SecurityTxtConnector` (Beta) shipped 2026-07-22 as the first v1.1 connector; roadmap and connector-release process docs were updated same day.
+A complete repository audit (code, tests, build, deploy config — not just docs) has been done and is fully written up:
+- `docs/PROJECT_OVERVIEW.md` — what the project is, architecture, stack, structure.
+- `docs/CURRENT_STATUS.md` — verified build/test health and the current security picture.
+- `docs/KNOWN_ISSUES.md` — 38 findings, severity-ordered, file:line cited. **This is the canonical bug list going forward.**
+- `docs/ROADMAP.md` — a 7-milestone prioritized implementation plan.
+- `docs/TECH_DECISIONS.md` — updated with an open architectural gap (API-key identity model) that the top-priority fix depends on.
+- `docs/MILESTONES.md`, `docs/CHANGELOG_AI.md` — history, including this session.
 
-## Highest-priority task
+**No application code was changed this session** — Phase 1–4 only (discovery, assessment, documentation, planning), per explicit instruction to wait for approval before implementation.
 
-**Close the remaining `RELEASE_CHECKLIST.md` "Recommended Before Launch" items to unblock the v1.0.0 GA tag.** These are the only things standing between rc.1 and GA, they're all `S`-effort (each under a day), and two of them (CI, error-detail leakage) are also flagged independently in the root `ROADMAP.md`. Suggested order:
+## Blocking item for next session
 
-1. **Add `.github/workflows/ci.yml`** (`npm ci && npm run lint && npm run test` on push/PR) — highest leverage, currently nothing blocks a regressing PR from merging, and every other fix in this list should land through a PR CI would now cover.
-2. **Stop leaking `err.message` to clients** in `server.ts`'s `/investigate`, `/playground/transform`, `/intelligence/analyze` catch blocks (~lines 563, 865, 885, 902) when `NODE_ENV === "production"` — mirror `utils/observability.ts`'s existing `errorHandler` behavior. Quick, security-adjacent.
-3. **Complete `src/api/openapi.ts`** — add `/jobs`, `POST /playground/transform`, `GET /metrics`, `POST /intelligence/analyze` so `/docs` reflects all live authenticated routes.
-4. **Surface visible errors in `src/App.tsx`** for `handleLoginSuccess`, `handleAddKey`, `handleRevokeKey`, `handleRotateKey` (currently silent `console.error`-only).
-5. **Doc/contact cleanup**: fix `SECURITY.md`'s unverified `security@sentinelapi.dev`, and `CONTRIBUTING.md`'s placeholder `your-org/sentinel-api` clone URL.
+**The 7-milestone roadmap in `docs/ROADMAP.md` has not been approved by the user yet.** Do not start Milestone 0 (or anything else) until that approval is explicit. If this session opens and approval was given in the interim (check the conversation), start Milestone 0 immediately — it fixes a critical, previously-undocumented cross-tenant IDOR (`docs/KNOWN_ISSUES.md` #1) that lets any API caller see/mutate any other tenant's keys, jobs, history, and reports. This is a genuinely severe finding and shouldn't sit any longer than necessary once approved.
 
-Each item's acceptance criteria (including which test file to extend) is spelled out in `RELEASE_CHECKLIST.md` under "Recommended Before Launch" — use it directly rather than re-deriving criteria.
+## If approved: how to start Milestone 0
 
-## After that
+1. Read `docs/TECH_DECISIONS.md`'s "Open architectural gap" section first — the IDOR fix requires a real per-tenant identity design decision, not a quick `.filter()` patch. Decide between the two options laid out there (per-key owner id vs. session-linked keys) before touching route handlers.
+2. Fix ownership checks on `/keys`, `/jobs`, `/history`, `/reports/:id`, `/investigations/:jobId` per the design chosen in step 1.
+3. Fix the `errorHandler` leak in `utils/observability.ts` alongside the 4 already-known leak sites in `server.ts` — do both together since they're the same class of fix.
+4. Fix `scoring.ts`'s hardcoded absolute-year thresholds.
+5. Decide and implement: wire the Dashboard chart to real data, or remove it.
+6. Implement real job cancellation (abort in-flight work, not just a status flag).
 
-Resume connector expansion per `docs/ROADMAP.md`: next connector is `TechnologyFingerprintConnector`, followed by `CertificateTransparencyConnector`, `ShodanConnector`, and a `Crawl4AI WebFootprintConnector`. Follow `docs/CONNECTOR_RELEASE_CHECKLIST.md` — one connector at a time, real-source data only (see `docs/TECH_DECISIONS.md` for why that rule exists).
+Full task/dependency/risk breakdown for this milestone (and all 7) is in `docs/ROADMAP.md`.
 
-Do **not** start on the "Post-Launch Improvements" section of `RELEASE_CHECKLIST.md` (Dockerfile, persistent backing store, Redis rate limiting, React component tests, connection pooling) before the GA-blocking list above — they're explicitly deferred and lower leverage right now.
+## After Milestone 0
+
+Follow the roadmap in order — Milestone 1 (frontend correctness), Milestone 2 (CI/Docker/OpenAPI/release hygiene), Milestone 3 (test coverage, written against Milestone 0/1's final shape), Milestone 4 (code quality debt), Milestone 5 (accessibility), Milestone 6 (detection/scoring quality). Connector expansion (`TechnologyFingerprintConnector` etc.) is deliberately deferred until after Milestone 3 — see `docs/ROADMAP.md`'s reasoning.
 
 ## Keeping this file useful
 
-Update this file (and `docs/CURRENT_STATUS.md`) at the end of each session with what actually got done and what's next — don't let it drift back out of sync with the code the way it apparently did before this review (these five `docs/` files didn't exist prior to 2026-07-28; this session reconstructed them from `RELEASE_CHECKLIST.md`, `VERSION.md`, `CHANGELOG.md`, and git history).
+Per the user's standing instructions: update all of `docs/` at the end of every work session — `CURRENT_STATUS.md`, `ROADMAP.md` (mark milestone progress), `MILESTONES.md`, `CHANGELOG_AI.md` (new entry), and this file with exactly what should happen next. When a milestone is fully complete, say so explicitly in `docs/ROADMAP.md` rather than leaving its task list looking open.
