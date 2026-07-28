@@ -1,34 +1,31 @@
 # Next Session
 
-_Written 2026-07-28, end of the Milestone 1 implementation session. Read this first, then `docs/CURRENT_STATUS.md` and `docs/KNOWN_ISSUES.md` for detail._
+_Written 2026-07-28, end of the Milestone 2 implementation session. Read this first, then `docs/CURRENT_STATUS.md` for detail._
 
 ## Where things stand
 
-Milestones 0 and 1 are both **complete**. `docs/KNOWN_ISSUES.md` now has 0 Critical and 0 High issues open — everything remaining is Medium or Low severity. Highlights:
-- Milestone 0: fixed a critical cross-tenant IDOR (every API key now has its own owner), a 5th error-leak site, a scoring date-drift bug, a fabricated Dashboard chart, and non-functional job cancellation.
-- Milestone 1: fixed a real rendering bug (`RelationshipEdge`/`Entity` shape mismatches causing `undefined` values and a fake confidence badge), added mobile navigation (previously totally unreachable below 768px), fixed silent frontend error handling, eliminated a duplicated/unscoped history data model, and a print-output typo.
-- Both milestones verified: `npm run test` (240/240), `npm run lint` (clean), `npm run build` (succeeds). Milestone 1 additionally verified with a manual Playwright smoke-test pass against the running dev server (screenshots reviewed) since it had no new automated coverage of its own.
+Milestones 0, 1, and 2 are all **complete**. The project now has: no cross-tenant IDOR, working mobile nav and correct relationship rendering, CI, a Dockerfile, a fully-documented OpenAPI spec, zero `npm audit` findings, and internally-consistent version numbers and documentation (no more placeholder URLs, unverifiable contacts, or a corrupted `CHANGELOG.md` entry).
 
-## Highest-priority task: Milestone 2 — Release Hygiene
+**Housekeeping first**: this session's instructions narrowed the end-of-session doc updates to `docs/ROADMAP.md`, `docs/CURRENT_STATUS.md`, `docs/NEXT_SESSION.md`, and `docs/CHANGELOG_AI.md` — `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` were deliberately left untouched and are now out of sync with reality (they still list the 3 High-severity Milestone-2-scoped items as open, don't reflect the postcss fix, version-drift fix, or doc cleanup, etc.). **Reconcile those two files against `docs/CURRENT_STATUS.md` and `docs/CHANGELOG_AI.md`'s Milestone 2 entry before trusting their item numbers.**
 
-Per `docs/ROADMAP.md`, next up is CI/Docker/OpenAPI/release-hygiene work — chosen to run after Milestones 0-1 so CI, once added, is gated on both the security and frontend fixes, not just the security ones:
+## Highest-priority task: Milestone 3 — Test Coverage & Quality Hardening
 
-1. **Add `.github/workflows/ci.yml`** (`npm ci && npm run lint && npm run test` on push/PR). Highest leverage item — nothing currently blocks a regressing PR.
-2. **Add a `Dockerfile`** matching (and actually validating) `DEPLOYMENT.md`'s existing inline example.
-3. **Complete `src/api/openapi.ts`** for `/jobs`, `/playground/transform`, `/metrics`, `/intelligence/analyze`.
-4. **Run `npm audit fix`** for the postcss advisory (verify the Tailwind v4 build still works after).
-5. **Fix `SECURITY.md`'s contact email and `CONTRIBUTING.md`'s placeholder clone URL.**
-6. **Add `"engines": {"node": ">=18"}`** to `package.json`; fix the `/version` vs `package.json` version drift (`server.ts` hardcodes `"1.0.0"`).
-7. **Clean up `vite.config.ts`'s leftover AI-Studio-era comments**, the unused `@/*` tsconfig alias, and the stale `npm run clean` target.
-8. **Delete the dead legacy connectors** (`src/connectors/google.ts`, `news.ts`, `github.ts`) — requires retiring/repointing `tests/legacy-connectors.test.ts` first.
+Per `docs/ROADMAP.md`:
+1. Tests for `/playground/transform`, `/metrics`, `/intelligence/analyze` at the HTTP route layer (services are unit-tested, routes aren't).
+2. A dedicated test file for `entityResolution.ts` (none exists).
+3. A dedicated test file for the `whois.ts` connector (none exists, despite being load-bearing for scoring).
+4. Investigate/fix the `tests/investigation-rate-limit.test.ts` teardown race (intermittent, not reliably reproduced).
+5. First React component tests (`@testing-library/react` isn't a dependency yet) — start with `InvestigationReport.tsx` and the Playground submit flow's golden + one error path.
 
-Full task/dependency/risk breakdown is in `docs/ROADMAP.md`'s Milestone 2 section.
+## Two things found this session that need a decision, not just a fix
 
-## A note on scope decisions made in Milestone 1 (don't relitigate without reason)
+1. **`server.ts` doesn't actually read `process.env.PORT`** — `const PORT = 3000;` is a literal, despite `DEPLOYMENT.md` and the new `Dockerfile` both documenting `PORT` as configurable via `ENV PORT=3000`. It works today only by coincidence (the documented default matches the hardcoded value). This wasn't fixed because it fell outside Milestone 2's 7 explicit objectives. Small, safe fix (`const PORT = parseInt(process.env.PORT || "3000", 10);`) — worth doing early in whichever session picks it up, since it's a one-line, low-risk correctness fix.
+2. **Dead legacy connectors** (`src/connectors/google.ts`, `news.ts`, `github.ts`) are still in the tree. Flagged as dead code across three sessions now but never removed, twice now because of explicit "don't touch connectors" instructions. If a future session is given latitude to touch connectors, this is a clean, low-risk deletion (confirm `tests/legacy-connectors.test.ts` is retired/repointed first).
 
-- `onAddJob` was **removed, not wired up**. Playground's UI runs investigations via `/api/investigations`; the `ExtractionJob`/ `/playground/transform` flow it was originally meant to feed is a separate, API/SDK-only feature. If a future session wants Dashboard to show real Playground activity, that's a new feature (surface investigation stats on the Dashboard), not "finishing" `onAddJob`.
-- The history-model fix went further than the roadmap's minimum bar ("share one type") — it eliminated `localStorage`-based history entirely in favor of the real per-tenant server history. `HistoryView.tsx`'s old "Clear History" button was removed as part of this (no server-side delete endpoint exists); adding one is an open, unscoped future feature (`docs/KNOWN_ISSUES.md`'s last Low item).
+## Docker build verification gap
+
+`docker build` could not be completed in this sandbox — `production.cloudfront.docker.com` (Docker Hub's CDN) is explicitly denied by this environment's egress policy (403, confirmed twice, not transient). The `Dockerfile`/`.dockerignore` were verified as thoroughly as possible short of that (the exact install and start commands the image runs were tested standalone and both work correctly). If a future session runs in an environment with normal registry access, running `docker build . && docker run -p 3000:3000 <image>` once would close this gap for good — it's a standard `node:18-alpine` multi-stage build with no reason to expect a real failure, but "should work" isn't the same as "confirmed."
 
 ## Keeping this file useful
 
-Per the user's standing instructions: update all of `docs/` at the end of every work session — `CURRENT_STATUS.md`, `ROADMAP.md` (mark milestone progress), `MILESTONES.md`, `KNOWN_ISSUES.md` (move fixed items, add new ones found), `CHANGELOG_AI.md` (new entry), and this file with exactly what should happen next. Also: files changed / features completed / outstanding work / recommended next task should be summarized back to the user directly in the session, not just written to disk.
+Per the user's standing instructions: update project documentation at the end of every work session with what actually got done and what's next. This session's instructions narrowed that to 4 specific files — check whether that narrowing was a one-off for this task or the new standing scope before assuming it carries forward; if unclear, ask, and in the meantime update the full `docs/` set (including `KNOWN_ISSUES.md`/`MILESTONES.md`) the way Milestones 0 and 1 did, since that's the established default.

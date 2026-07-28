@@ -1,6 +1,6 @@
 /**
  * Sentinel Security Intelligence Platform - Official TypeScript SDK
- * Version: 1.0.0
+ * Version: 1.0.0-rc.1
  * 
  * Production-ready Client for querying real-time cyber intelligence feeds,
  * running synchronous/asynchronous threat analysis, and polling parallel scans.

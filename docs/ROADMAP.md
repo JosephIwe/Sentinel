@@ -4,7 +4,7 @@ _Canonical roadmap. The root `ROADMAP.md` mirrors a summary of this file for dis
 
 ## Status
 
-A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-milestone plan below, replacing the earlier "close the RELEASE_CHECKLIST recommendations" framing with a severity-ordered plan that leads with a critical security finding. **The roadmap was approved by the user on 2026-07-28. Milestones 0 and 1 are complete** (see below); Milestone 2 is next and has not started.
+A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-milestone plan below, replacing the earlier "close the RELEASE_CHECKLIST recommendations" framing with a severity-ordered plan that leads with a critical security finding. **The roadmap was approved by the user on 2026-07-28. Milestones 0, 1, and 2 are complete** (see below); Milestone 3 is next and has not started.
 
 ---
 
@@ -49,27 +49,29 @@ A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-
 
 ---
 
-## Milestone 2 — Release Hygiene (CI, Docker, OpenAPI, docs)
+## Milestone 2 — Release Engineering & Project Readiness ✅ COMPLETE (2026-07-28)
 
 **Objective**: everything needed to responsibly cut a real `v1.0.0` tag and accept outside contributions.
 
-**Tasks**:
-- Add `.github/workflows/ci.yml` (`npm ci && npm run lint && npm run test` on push/PR).
-- Add a `Dockerfile` matching (and validating) `DEPLOYMENT.md`'s existing inline example.
-- Complete `src/api/openapi.ts` for `/jobs`, `/playground/transform`, `/metrics`, `/intelligence/analyze`.
-- Run `npm audit fix` for the postcss advisory (verify it doesn't break the Tailwind v4 build).
-- Fix `SECURITY.md`'s contact email and `CONTRIBUTING.md`'s placeholder clone URL.
-- Add `"engines": {"node": ">=18"}` to `package.json`; fix the `/version` vs `package.json` version drift.
-- Clean up `vite.config.ts`'s leftover AI-Studio-era comments, the unused `@/*` tsconfig alias, and the stale `npm run clean` target.
-- Delete (not just exclude) the dead legacy connectors (`src/connectors/google.ts`, `news.ts`, `github.ts`) once `tests/legacy-connectors.test.ts` is retired or repointed — removes residual attack surface entirely rather than relying on `server.ts` never wiring them in.
+This milestone was executed under a tighter, explicitly-scoped instruction set than originally planned above: no architecture/auth/investigation/scoring/evidence/validation/connector changes, minimal focused commits only. Two originally-planned items were consequently deferred rather than done (see "Deferred" below), and one item (dead-code removal) was narrowed in scope for the same reason.
 
-**Dependencies**: do this *after* Milestone 0 so CI enforces the security fixes going forward, not before.
+**Tasks** (all complete):
+- [x] Added `.github/workflows/ci.yml` running `npm ci`, `npm run lint`, `npm test`, `npm run build` on push/PR (Node 18, matching the documented minimum).
+- [x] Added a production `Dockerfile` (matching `DEPLOYMENT.md`'s documented layout, with `--only=production` modernized to `--omit=dev`) and `.dockerignore`.
+- [x] Completed `src/api/openapi.ts` for `/jobs`, `/playground/transform`, `/metrics`, `/intelligence/analyze` — all four now documented with real request/response shapes verified against `server.ts`, plus new `ExtractionJob`/`IntelligenceReport` schemas. Verified live: the built server serves all 15 paths at `/api/v1/openapi.json` and Swagger UI renders at `/docs`.
+- [x] Ran `npm audit fix` for the postcss advisory (patch-level bump, 8.5.17 → 8.5.24, zero breaking changes, `package-lock.json`-only diff) — `npm audit` now reports 0 vulnerabilities.
+- [x] Fixed `SECURITY.md`'s unverified email (replaced with GitHub Security Advisories, a real channel tied to this repo, rather than guessing a replacement address), `CONTRIBUTING.md`'s placeholder clone URL, and `package.json`'s stale `repository`/`bugs`/`homepage` URLs (all previously pointed at a placeholder org that isn't this repo).
+- [x] Fixed version drift: `GET /version` and the OpenAPI spec's `info.version` both hardcoded `"1.0.0"` instead of the real `"1.0.0-rc.1"` — now consistent across `package.json`, `VERSION.md`, `README.md`, `server.ts`, `src/api/openapi.ts`, `DEPLOYMENT.md`'s example response, and both SDKs' version comments.
+- [x] Removed confirmed dead code within the session's constraints: the unused `"@/*"` tsconfig path alias (zero usages repo-wide) and the stale `npm run clean` script (referenced a `server.js` output the build hasn't produced since it was reorganized to `dist/server.cjs`).
+- [x] Cleaned documentation: fixed the placeholders above, fixed a genuinely broken `CHANGELOG.md` entry that had been truncated mid-sentence since a much earlier commit (removed rather than guessed at a completion, since inventing the missing text wasn't defensible), added `SECURITYTXT_CACHE_TTL_MS`/`APP_ACCESS_CODE` to `DEPLOYMENT.md`'s environment variable list (present in `.env.example`, undocumented), and backfilled `CHANGELOG.md`'s `[Unreleased]` section with the security/frontend fixes from Milestones 0-1 and this milestone's release-engineering additions, none of which had been recorded there yet.
 
-**Risks**: low, mostly additive; deleting legacy connectors requires updating/removing their test file first.
+**Deferred, not done this session** (both explicitly out of scope under this session's "do not modify connectors/validation" and "keep minimal" constraints, not overlooked):
+- Deleting the dead legacy connectors (`src/connectors/google.ts`, `news.ts`, `github.ts`) — this session's instructions explicitly excluded touching `connectors`. Still real dead code; still a legitimate future cleanup, just not this session's to do.
+- Adding `"engines": {"node": ">=18"}` to `package.json` and cleaning up `vite.config.ts`'s AI-Studio-era comments — not part of this session's 7 explicit objectives; skipped to honor "do not introduce unrelated improvements."
 
-**Estimated complexity**: Small–Medium.
+**Verification**: `npm test` (240/240), `npm run lint` (clean), `npm run build` (succeeds), `npm audit` (0 vulnerabilities), CI workflow YAML validated (parses correctly, structurally sound, mirrors the exact locally-passing npm scripts). **`docker build` itself could not be completed** — this sandbox's egress policy explicitly denies `production.cloudfront.docker.com` (Docker Hub's CDN backend) with a 403, and this session's proxy policy is to report that rather than route around it. Verified everything short of the actual `docker build` instead: `npm ci --omit=dev` (the image's exact runtime-stage install command) succeeds cleanly, and `node dist/server.cjs` (the image's exact `CMD`) boots and correctly serves `/health`, `/version`, and the frontend when run standalone with only production dependencies installed. The Dockerfile itself is a standard, widely-used pattern (`node:18-alpine`, multi-stage build) with no reason to expect it would fail in an environment with normal registry access (e.g. real CI). **Also discovered, out of scope to fix**: `server.ts` hardcodes `PORT = 3000` and does not actually read `process.env.PORT`, despite `DEPLOYMENT.md` and the Dockerfile both documenting `PORT` as configurable — it happens to work today only because the documented default matches the hardcoded value.
 
-**Expected outcome**: a real, CI-gated `v1.0.0` tag; deployment docs that are actually validated; no known dependency vulnerabilities.
+**Expected outcome achieved**: CI now gates every PR on lint/test/build; deployment has a real, mostly-verified container path; the API surface is fully documented; the dependency tree has no known vulnerabilities; version numbers agree everywhere; and the project's own documentation no longer contains placeholder URLs, an unverifiable contact, or a corrupted changelog entry.
 
 ---
 

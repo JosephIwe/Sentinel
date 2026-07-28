@@ -1,53 +1,53 @@
 # Current Status
 
-_Last reviewed: 2026-07-28, after Milestone 1 implementation, against the working tree on `claude/project-memory-review-cqx488`. Supersedes the earlier same-day version of this file (pre-Milestone-1)._
+_Last reviewed: 2026-07-28, after Milestone 2 implementation, against the working tree on `claude/project-memory-review-cqx488`. Supersedes the earlier same-day version of this file (pre-Milestone-2). Note: this update, per explicit session instructions, did not touch `docs/KNOWN_ISSUES.md` or `docs/MILESTONES.md` — their item numbers/counts below are as of the Milestone 1 pass and are now somewhat stale; treat this file's prose as the current source of truth until they're refreshed._
 
 ## Release state
 
-- Declared version: `1.0.0-rc.1` (`package.json`, `VERSION.md`, README badge). `GET /version` still returns hardcoded `"1.0.0"` — drift between the two (Known Issues #16). Not yet fixed, scoped to Milestone 2.
+- Declared version: `1.0.0-rc.1` — now genuinely consistent everywhere: `package.json`, `VERSION.md`, `README.md` badge, `server.ts`'s `GET /version` (was hardcoded `"1.0.0"`, fixed), `src/api/openapi.ts`'s `info.version` (same fix), `DEPLOYMENT.md`'s example response, and both SDKs' version comments.
 - No `v1.0.0` tag cut yet. Private-beta access gate is live in front of the web UI.
+- CI now exists (`.github/workflows/ci.yml`) and gates lint/test/build on every push/PR — previously nothing did.
 
 ## Verified build health (ran directly, not inferred from docs)
 
-- `npm run test`: **240/240 tests pass** across 21 files (unchanged test count from Milestone 0 — Milestone 1 was a frontend-only pass, verified manually rather than with new automated tests; see "What's still broken or missing" below).
+- `npm run test`: **240/240 tests pass** across 21 files (unchanged count — Milestone 2 was release-engineering, not feature work, so no new test suites).
 - `npm run lint` (`tsc --noEmit`): clean, zero errors.
-- `npm run build`: succeeds. Client ~399kB JS (gzip ~102kB) + ~81kB CSS (gzip ~13kB); server bundle ~247kB.
-- Manually verified in a real browser (headless Chromium via Playwright against the dev server): mobile hamburger nav, login → dashboard → key creation with error-banner infrastructure in place, an end-to-end investigation run, the Relationships tab rendering real `source`/`target` entity IDs (not `undefined`), and a full history-restore round trip (investigate → appears in server-side History → restore renders the report again). Screenshots reviewed directly.
-- `npm audit` still reports 1 high-severity postcss advisory (Known Issues #4) — not yet fixed, scoped to Milestone 2.
+- `npm run build`: succeeds. Client ~399kB JS (gzip ~102kB) + ~81kB CSS (gzip ~13kB); server bundle ~257kB.
+- `npm audit`: **0 vulnerabilities** (was 1 high-severity postcss advisory, fixed via `npm audit fix` — a patch-level bump, 8.5.17 → 8.5.24, `package-lock.json`-only diff).
+- OpenAPI spec now documents all 15 live routes (was 11) — verified live against the built server (`/api/v1/openapi.json` and Swagger UI at `/docs` both checked).
+- Docker: a production `Dockerfile` + `.dockerignore` now exist, matching `DEPLOYMENT.md`'s documented layout. `docker build` itself could not be completed in this sandbox — its egress policy explicitly denies Docker Hub's CDN backend (403, policy-level, reproduced twice, not transient) — so the exact commands the image runs were verified standalone instead: `npm ci --omit=dev` installs cleanly, and `node dist/server.cjs` boots and correctly serves `/health`, `/version`, and the frontend with only production dependencies present. High confidence the image builds correctly in a normal CI environment; not independently confirmed in-session.
+- **Found, not fixed (out of scope this session)**: `server.ts` hardcodes `PORT = 3000` and never reads `process.env.PORT`, despite `DEPLOYMENT.md` and the Dockerfile documenting `PORT` as configurable. Works today only because the documented default happens to match the hardcoded value.
 
 ## Security — full picture
 
 **Resolved, Milestone 0 (2026-07-28)**: Critical cross-tenant IDOR (every API key now has its own `ownerId`, `/keys`/`/jobs`/`/history`/`/reports/:id`/`/investigations/:jobId`/`/metrics` all scoped to caller); the 5th `err.message` leak site.
 
+**Resolved, Milestone 2 (2026-07-28)**: the 1 high-severity dependency advisory (postcss); an unverified contact email in `SECURITY.md` replaced with GitHub Security Advisories (a real, functional channel tied to this repo).
+
 **Resolved, prior `RELEASE_CHECKLIST.md` audit** (verified in code before this session): hardcoded API keys, shared global `currentUser` session bug, SSRF exposure in GitHub discovery, WHOIS-fallback scoring bug, GitHub rate-limit/`NO_DATA` conflation.
 
-**Still open**: no `helmet`/CORS hardening; `SESSION_SECRET` silently regenerates per process restart if unset; IDs use `Math.random()` instead of crypto randomness (secrets themselves are fine). See `docs/KNOWN_ISSUES.md` Medium/Low sections.
-
-Full severity-ordered list with file:line citations: `docs/KNOWN_ISSUES.md` — **0 Critical, 0 High, 18 Medium, 10 Low remain open** after Milestones 0 and 1 (was 1 Critical / 7 High / 20 Medium / 10 Low at the start of the audit).
+**Still open**: no `helmet`/CORS hardening; `SESSION_SECRET` silently regenerates per process restart if unset; IDs use `Math.random()` instead of crypto randomness (secrets themselves are fine); the three dead legacy fabricated-data connectors are still present in `src/connectors/` (explicitly out of scope this session — "do not modify connectors").
 
 ## What's genuinely solid
 
-- Investigation pipeline architecture matches its README description exactly — parallel connectors, real circuit breakers/retries/timeouts, two-tier caching, and now genuine cancellation via a threaded `AbortSignal`.
-- Hallucination detection and evidence-grounding are real, tested, and structurally enforced — though the proper-noun check itself still has a bypassable gap (Known Issues #5).
-- `EntityGraph.tsx` is well-engineered (real force-directed layout, pan/zoom, the only genuinely keyboard-accessible component) — and its correct `source`/`target` usage turned out to be the tell that confirmed `PlaygroundView.tsx`'s `from`/`to` was the broken one during Milestone 1.
-- `src/utils/entityMatcher.ts`, `reliability.ts`, `logger.ts` are clean, dependency-free, well-tested utility modules.
-- SDKs are field-accurate against the live API for core investigation flows.
-- Backend test coverage is strong for session/auth, SSRF, scoring, rate limiting, hallucination detection, connector status semantics, and (as of Milestone 0) per-tenant ownership.
-- The Dashboard no longer shows fabricated data as if it were real telemetry (Milestone 0), and the frontend no longer maintains a second, unscoped copy of investigation history (Milestone 1).
-- Mobile users can now navigate the full app; relationship/entity data renders correctly instead of showing `undefined`; login/key-management failures are now visible instead of silent.
+- Investigation pipeline architecture matches its README description exactly — parallel connectors, real circuit breakers/retries/timeouts, two-tier caching, genuine cancellation via a threaded `AbortSignal`.
+- Hallucination detection and evidence-grounding are real, tested, and structurally enforced.
+- Backend test coverage is strong for session/auth, SSRF, scoring, rate limiting, hallucination detection, connector status semantics, and per-tenant ownership.
+- The full API surface is now documented (OpenAPI), CI-gated, containerizable, and internally consistent on version numbers — the project is in a genuinely better state to accept outside contributions or cut a real tag than it was this morning.
+- Project documentation (`SECURITY.md`, `CONTRIBUTING.md`, `DEPLOYMENT.md`, `package.json` metadata, `CHANGELOG.md`) no longer contains placeholder URLs, an unverifiable contact, an undocumented env var, or (previously) a `CHANGELOG.md` entry that was corrupted/truncated mid-sentence since a much earlier commit.
 
-## What's still broken or missing (scoped to Milestone 2+)
+## What's still open (scoped to Milestone 3+)
 
-- No CI workflow, no Dockerfile, incomplete OpenAPI spec, npm audit finding unresolved (Known Issues #1-4) — Milestone 2.
-- Hallucination detector's proper-noun check is bypassable; entity resolution can false-merge on the `Generic` type wildcard; `scoringRules.json` isn't actually config-driven (Known Issues #5-7) — Milestone 6.
+- Zero automated React component tests; a few backend route/service coverage gaps remain — Milestone 3.
+- `InvestigationReport.tsx` is still a 2055-line single component with no memoization; duplicated cache/color-logic boilerplate across connectors and components — Milestone 4.
 - Accessibility gaps (unlabeled inputs, missing ARIA tab roles, tiny low-contrast text) — Milestone 5.
-- Zero automated React component tests; a handful of backend route/service coverage gaps remain — Milestone 3.
-- `InvestigationReport.tsx` is still a 2055-line single component with no memoization — Milestone 4.
+- Hallucination detector's proper-noun check is bypassable; entity resolution can false-merge on the `Generic` type wildcard; `scoringRules.json` isn't actually config-driven — Milestone 6.
+- The dead legacy connectors and the `"engines"` field/`vite.config.ts` cleanup, deferred from Milestone 2 under this session's explicit constraints — worth folding into whichever future session is allowed to touch connectors, or a small standalone hygiene pass.
 
 ## Connectors (`docs/CONNECTOR_SCORECARD.md`)
 
-WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline but not deleted (Known Issues #15).
+WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted (this session's constraints excluded touching connectors at all).
 
 ## Status of this documentation system
 
-`docs/` contains the full set: `PROJECT_OVERVIEW.md`, `CURRENT_STATUS.md` (this file), `MILESTONES.md`, `ROADMAP.md`, `TECH_DECISIONS.md`, `KNOWN_ISSUES.md`, `CHANGELOG_AI.md`, `NEXT_SESSION.md`, plus the pre-existing `CONNECTOR_SCORECARD.md`/`CONNECTOR_RELEASE_CHECKLIST.md`. The 7-milestone roadmap was approved by the user on 2026-07-28; Milestones 0 and 1 are complete; Milestone 2 has not started.
+`docs/` contains the full set: `PROJECT_OVERVIEW.md`, `CURRENT_STATUS.md` (this file), `MILESTONES.md`, `ROADMAP.md`, `TECH_DECISIONS.md`, `KNOWN_ISSUES.md`, `CHANGELOG_AI.md`, `NEXT_SESSION.md`, plus the pre-existing `CONNECTOR_SCORECARD.md`/`CONNECTOR_RELEASE_CHECKLIST.md`. The 7-milestone roadmap was approved by the user on 2026-07-28; **Milestones 0, 1, and 2 are complete**; Milestone 3 has not started. `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` were intentionally not updated this session (explicit instruction scoped doc updates to this file, `ROADMAP.md`, `NEXT_SESSION.md`, and `CHANGELOG_AI.md` only) — they should be reconciled against this file's content in a future session.

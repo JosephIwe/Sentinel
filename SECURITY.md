@@ -17,9 +17,9 @@ We actively support and patch security issues in the following versions:
 
 ## ✉️ Reporting a Vulnerability
 
-If you discover a security vulnerability within Sentinel API, please **do not** open a public issue. Instead, report it privately to our security team.
+If you discover a security vulnerability within Sentinel API, please **do not** open a public issue. Instead, report it privately using [GitHub Security Advisories](https://github.com/JosephIwe/Sentinel/security/advisories/new) for this repository.
 
-Please email your report to **security@sentinelapi.dev** with:
+Please include:
 1. A clear description of the vulnerability.
 2. Step-by-step instructions (or a proof-of-concept script) to reproduce the issue.
 3. The potential impact of the exploit.
