@@ -1,35 +1,33 @@
 # Next Session
 
-_Written 2026-07-28, end of the Milestone 0 implementation session. Read this first, then `docs/CURRENT_STATUS.md` and `docs/KNOWN_ISSUES.md` for detail._
+_Written 2026-07-28, end of the Milestone 1 implementation session. Read this first, then `docs/CURRENT_STATUS.md` and `docs/KNOWN_ISSUES.md` for detail._
 
 ## Where things stand
 
-Milestone 0 (security & trust emergency fixes) is **complete**:
-- The critical cross-tenant IDOR is fixed — every API key now has its own `ownerId`, and `/keys`, `/jobs`, `/history`, `/reports/:id`, `/investigations/:jobId`, `/metrics` are all scoped to the caller.
-- The 5th error-message leak site, the scoring engine's date-drift bug, the Dashboard's fabricated usage chart, and non-functional job cancellation are all fixed.
-- `npm run test` (240/240), `npm run lint` (clean), `npm run build` (succeeds) all verified.
-- Full detail in `docs/CHANGELOG_AI.md`'s Milestone 0 entry; issue tracking current in `docs/KNOWN_ISSUES.md`.
+Milestones 0 and 1 are both **complete**. `docs/KNOWN_ISSUES.md` now has 0 Critical and 0 High issues open — everything remaining is Medium or Low severity. Highlights:
+- Milestone 0: fixed a critical cross-tenant IDOR (every API key now has its own owner), a 5th error-leak site, a scoring date-drift bug, a fabricated Dashboard chart, and non-functional job cancellation.
+- Milestone 1: fixed a real rendering bug (`RelationshipEdge`/`Entity` shape mismatches causing `undefined` values and a fake confidence badge), added mobile navigation (previously totally unreachable below 768px), fixed silent frontend error handling, eliminated a duplicated/unscoped history data model, and a print-output typo.
+- Both milestones verified: `npm run test` (240/240), `npm run lint` (clean), `npm run build` (succeeds). Milestone 1 additionally verified with a manual Playwright smoke-test pass against the running dev server (screenshots reviewed) since it had no new automated coverage of its own.
 
-## Highest-priority task: Milestone 1 — Frontend Correctness & Functional Gaps
+## Highest-priority task: Milestone 2 — Release Hygiene
 
-Per `docs/ROADMAP.md`, the next milestone fixes real, user-visible functional bugs:
+Per `docs/ROADMAP.md`, next up is CI/Docker/OpenAPI/release-hygiene work — chosen to run after Milestones 0-1 so CI, once added, is gated on both the security and frontend fixes, not just the security ones:
 
-1. **Wire `onAddJob`** so the Dashboard reflects real Playground activity, or deliberately remove the dead prop/handler pair if the two views should stay separate — right now it's silently disconnected, which is worse than either real choice (`PlaygroundView.tsx`, `App.tsx:158-168`).
-2. **Fix the `RelationshipEdge` shape mismatch** — `PlaygroundView.tsx:20-21` uses `from`/`to`, `InvestigationReport.tsx:19-22` uses `source`/`target`, both locally redefined instead of imported from `src/types.ts`. Check the real API response shape (server.ts's relationship objects use `source`/`target` — see the seeded `investigationHistory` records in `server.ts` for confirmation) before picking which one to fix.
-3. **Add a mobile navigation fallback** — `Layout.tsx`'s nav is `hidden md:flex` with nothing underneath it; below 768px there's no way to reach Playground/History/Docs/Dashboard except by whatever page state happens to already be loaded.
-4. **Surface visible errors** for `App.tsx`'s login/key-management handlers and the localStorage `JSON.parse` failure sites in `HistoryView.tsx`/`PlaygroundView.tsx` (currently `console.error`-only).
-5. **Fix the "BREIFING" typo** in `InvestigationReport.tsx:384`'s print output.
-6. **Decide on and implement one path** for the two disconnected history data models (server `extractionJobs` vs. localStorage history) — at minimum share one type between them; a full unification is optional and should be scoped down if it starts growing (see `docs/ROADMAP.md`'s risk note on this item).
+1. **Add `.github/workflows/ci.yml`** (`npm ci && npm run lint && npm run test` on push/PR). Highest leverage item — nothing currently blocks a regressing PR.
+2. **Add a `Dockerfile`** matching (and actually validating) `DEPLOYMENT.md`'s existing inline example.
+3. **Complete `src/api/openapi.ts`** for `/jobs`, `/playground/transform`, `/metrics`, `/intelligence/analyze`.
+4. **Run `npm audit fix`** for the postcss advisory (verify the Tailwind v4 build still works after).
+5. **Fix `SECURITY.md`'s contact email and `CONTRIBUTING.md`'s placeholder clone URL.**
+6. **Add `"engines": {"node": ">=18"}`** to `package.json`; fix the `/version` vs `package.json` version drift (`server.ts` hardcodes `"1.0.0"`).
+7. **Clean up `vite.config.ts`'s leftover AI-Studio-era comments**, the unused `@/*` tsconfig alias, and the stale `npm run clean` target.
+8. **Delete the dead legacy connectors** (`src/connectors/google.ts`, `news.ts`, `github.ts`) — requires retiring/repointing `tests/legacy-connectors.test.ts` first.
 
-Full task list, dependencies, and risk notes are in `docs/ROADMAP.md`'s Milestone 1 section — use it directly.
+Full task/dependency/risk breakdown is in `docs/ROADMAP.md`'s Milestone 2 section.
 
-## After Milestone 1
+## A note on scope decisions made in Milestone 1 (don't relitigate without reason)
 
-Milestone 2 (CI, Docker, OpenAPI completeness, npm audit fix, doc/contact cleanup) — do this after Milestone 1 so CI, once added, is gated on the frontend fixes too, not just the security ones.
-
-## A note on the removed `(job.status as string)` cast
-
-If you're touching `investigationWorker.ts` again: the cast that used to guard the `"cancelled"` checks was **not dead code** despite how the original audit characterized it — TypeScript's control-flow narrowing genuinely can't see `cancelJob()` mutating `job.status` asynchronously through the shared `jobs` map. It's now handled correctly via an `isCancelled(job)` helper (re-reads through a fresh parameter binding). Don't remove that helper and go back to a direct `job.status === "cancelled"` comparison inside `processJob` — it'll fail `tsc --noEmit` again for the same reason.
+- `onAddJob` was **removed, not wired up**. Playground's UI runs investigations via `/api/investigations`; the `ExtractionJob`/ `/playground/transform` flow it was originally meant to feed is a separate, API/SDK-only feature. If a future session wants Dashboard to show real Playground activity, that's a new feature (surface investigation stats on the Dashboard), not "finishing" `onAddJob`.
+- The history-model fix went further than the roadmap's minimum bar ("share one type") — it eliminated `localStorage`-based history entirely in favor of the real per-tenant server history. `HistoryView.tsx`'s old "Clear History" button was removed as part of this (no server-side delete endpoint exists); adding one is an open, unscoped future feature (`docs/KNOWN_ISSUES.md`'s last Low item).
 
 ## Keeping this file useful
 

@@ -8,13 +8,19 @@ import PlaygroundView from "./components/PlaygroundView";
 import HistoryView from "./components/HistoryView";
 import { User, ApiKey, ExtractionJob, ApiMetrics } from "./types";
 
+interface RestoredInvestigation {
+  type: string;
+  query: string;
+  report: any;
+}
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState<string>("landing");
   const [user, setUser] = useState<User | null>(null);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [extractionJobs, setExtractionJobs] = useState<ExtractionJob[]>([]);
   const [metrics, setMetrics] = useState<ApiMetrics | null>(null);
-  const [selectedHistory, setSelectedHistory] = useState<any | null>(null);
+  const [selectedHistory, setSelectedHistory] = useState<RestoredInvestigation | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Initialize and pull current developer context
@@ -60,32 +66,36 @@ export default function App() {
     initializeSession();
   }, []);
 
-  const handleLoginSuccess = async (email: string, name: string, companyName: string) => {
+  const handleLoginSuccess = async (email: string, name: string, companyName: string): Promise<boolean | string> => {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, name, companyName })
       });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        setCurrentPage("dashboard");
-        
-        // Refresh keys and metrics
-        const keysRes = await fetch("/api/keys");
-        if (keysRes.ok) {
-          const keysData = await keysRes.json();
-          setApiKeys(keysData.keys);
-        }
-        const metricsRes = await fetch("/api/metrics");
-        if (metricsRes.ok) {
-          const metricsData = await metricsRes.json();
-          setMetrics(metricsData.metrics);
-        }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return body.error || `Login failed (HTTP ${res.status}).`;
       }
-    } catch (err) {
+      const data = await res.json();
+      setUser(data.user);
+      setCurrentPage("dashboard");
+
+      // Refresh keys and metrics
+      const keysRes = await fetch("/api/keys");
+      if (keysRes.ok) {
+        const keysData = await keysRes.json();
+        setApiKeys(keysData.keys);
+      }
+      const metricsRes = await fetch("/api/metrics");
+      if (metricsRes.ok) {
+        const metricsData = await metricsRes.json();
+        setMetrics(metricsData.metrics);
+      }
+      return true;
+    } catch (err: any) {
       console.error("Auth login failure:", err);
+      return err.message || "Network error while logging in.";
     }
   };
 
@@ -101,69 +111,69 @@ export default function App() {
     }
   };
 
-  const handleAddKey = async (name: string, rateLimit: number) => {
+  const handleAddKey = async (name: string, rateLimit: number): Promise<boolean | string> => {
     try {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, rateLimit })
       });
-      if (res.ok) {
-        const data = await res.json();
-        setApiKeys([data.key, ...apiKeys]);
-        
-        // Refresh metrics
-        const metricsRes = await fetch("/api/metrics");
-        if (metricsRes.ok) {
-          const metricsData = await metricsRes.json();
-          setMetrics(metricsData.metrics);
-        }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return body.error || `Failed to create key (HTTP ${res.status}).`;
       }
-    } catch (err) {
+      const data = await res.json();
+      setApiKeys([data.key, ...apiKeys]);
+
+      // Refresh metrics
+      const metricsRes = await fetch("/api/metrics");
+      if (metricsRes.ok) {
+        const metricsData = await metricsRes.json();
+        setMetrics(metricsData.metrics);
+      }
+      return true;
+    } catch (err: any) {
       console.error("Key creation error:", err);
+      return err.message || "Network error while creating the key.";
     }
   };
 
-  const handleRevokeKey = async (id: string) => {
+  const handleRevokeKey = async (id: string): Promise<boolean | string> => {
     try {
       const res = await fetch(`/api/keys/${id}/revoke`, { method: "PUT" });
-      if (res.ok) {
-        const data = await res.json();
-        setApiKeys(apiKeys.map(k => k.id === id ? data.key : k));
-        
-        // Refresh metrics
-        const metricsRes = await fetch("/api/metrics");
-        if (metricsRes.ok) {
-          const metricsData = await metricsRes.json();
-          setMetrics(metricsData.metrics);
-        }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return body.error || `Failed to revoke key (HTTP ${res.status}).`;
       }
-    } catch (err) {
+      const data = await res.json();
+      setApiKeys(apiKeys.map(k => k.id === id ? data.key : k));
+
+      // Refresh metrics
+      const metricsRes = await fetch("/api/metrics");
+      if (metricsRes.ok) {
+        const metricsData = await metricsRes.json();
+        setMetrics(metricsData.metrics);
+      }
+      return true;
+    } catch (err: any) {
       console.error("Key revocation error:", err);
+      return err.message || "Network error while revoking the key.";
     }
   };
 
-  const handleRotateKey = async (id: string) => {
+  const handleRotateKey = async (id: string): Promise<boolean | string> => {
     try {
       const res = await fetch(`/api/keys/${id}/rotate`, { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        setApiKeys(apiKeys.map(k => k.id === id ? data.key : k));
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return body.error || `Failed to rotate key (HTTP ${res.status}).`;
       }
-    } catch (err) {
+      const data = await res.json();
+      setApiKeys(apiKeys.map(k => k.id === id ? data.key : k));
+      return true;
+    } catch (err: any) {
       console.error("Key rotation error:", err);
-    }
-  };
-
-  const handleAddJob = (newJob: ExtractionJob) => {
-    setExtractionJobs([newJob, ...extractionJobs]);
-    // Increment requests count on active metrics
-    if (metrics) {
-      setMetrics({
-        ...metrics,
-        totalRequests: metrics.totalRequests + 1,
-        dataExtractedBytes: metrics.dataExtractedBytes + 4124
-      });
+      return err.message || "Network error while rotating the key.";
     }
   };
 
@@ -215,8 +225,7 @@ export default function App() {
       )}
       {currentPage === "docs" && <DocsView />}
       {currentPage === "playground" && (
-        <PlaygroundView 
-          onAddJob={handleAddJob} 
+        <PlaygroundView
           initialResult={selectedHistory}
           onClearInitialResult={() => setSelectedHistory(null)}
         />

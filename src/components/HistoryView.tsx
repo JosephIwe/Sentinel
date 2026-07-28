@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Search, Calendar, Shield, Trash2, ArrowRight, ExternalLink, Clock, 
+import {
+  Search, Calendar, Shield, ArrowRight, ExternalLink, Clock,
   Sparkles, Cpu, Database, Inbox, ChevronLeft, ChevronRight, Filter,
-  Globe, Mail, User, Info, AlertCircle
+  Globe, Mail, User, Info, AlertCircle, Loader2
 } from "lucide-react";
 
 interface InvestigationHistoryRecord {
@@ -12,43 +12,66 @@ interface InvestigationHistoryRecord {
   query: string;
   summary: string;
   confidence: number;
-  resultJson: string;
+  riskScore: number;
   createdAt: string;
 }
 
 interface HistoryViewProps {
-  onSelectHistory: (record: InvestigationHistoryRecord) => void;
+  onSelectHistory: (restored: { type: string; query: string; report: any }) => void;
 }
 
 export default function HistoryView({ onSelectHistory }: HistoryViewProps) {
   const [history, setHistory] = useState<InvestigationHistoryRecord[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage] = useState<number>(8);
-  const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
 
-  // Load history from localStorage
+  // Investigation history is persisted server-side (per-account, see
+  // GET /api/history) rather than in localStorage, so it's consistent
+  // across devices/sessions and isn't lost if browser storage is cleared.
   useEffect(() => {
-    try {
-      const storedHistory = localStorage.getItem("sentinel_investigation_history");
-      if (storedHistory) {
-        setHistory(JSON.parse(storedHistory));
+    async function loadHistory() {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await fetch("/api/history?limit=100");
+        if (!res.ok) {
+          throw new Error(`Failed to load investigation history (HTTP ${res.status})`);
+        }
+        const data = await res.json();
+        setHistory(data.history || []);
+      } catch (err: any) {
+        console.error("Failed to load investigation history:", err);
+        setLoadError(err.message || "Failed to load investigation history.");
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to parse investigation history from localStorage:", err);
     }
+    loadHistory();
   }, []);
 
-  // Clear all history records
-  const handleClearHistory = () => {
+  // Fetches the full report for a history record and hands it to the
+  // Playground for restoration.
+  const handleSelect = async (item: InvestigationHistoryRecord) => {
+    setRestoreError(null);
+    setRestoringId(item.id);
     try {
-      localStorage.removeItem("sentinel_investigation_history");
-      setHistory([]);
-      setShowClearConfirm(false);
-      setCurrentPage(1);
-    } catch (err) {
-      console.error("Failed to clear investigation history:", err);
+      const res = await fetch(`/api/reports/${item.id}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load this report (HTTP ${res.status})`);
+      }
+      const report = await res.json();
+      onSelectHistory({ type: item.type, query: item.query, report });
+    } catch (err: any) {
+      console.error("Failed to restore investigation report:", err);
+      setRestoreError(err.message || "Failed to load this report.");
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -124,42 +147,27 @@ export default function HistoryView({ onSelectHistory }: HistoryViewProps) {
             Audit and restore previous threat signature scans, asset discovery trees, and synthesized corporate AI intelligence logs.
           </p>
         </div>
-
-        {/* Clear History Panel */}
-        {history.length > 0 && (
-          <div className="shrink-0 flex items-center space-x-2">
-            {showClearConfirm ? (
-              <div className="flex items-center space-x-2 bg-red-950/20 border border-red-900/30 px-3 py-1.5 rounded animate-fade-in">
-                <span className="text-[10px] text-red-400 font-mono font-medium">Are you sure?</span>
-                <button
-                  onClick={handleClearHistory}
-                  className="px-2.5 py-0.5 bg-red-500 hover:bg-red-600 text-black text-[10px] rounded font-bold cursor-pointer transition-colors"
-                >
-                  Yes, Clear
-                </button>
-                <button
-                  onClick={() => setShowClearConfirm(false)}
-                  className="px-2.5 py-0.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 text-[10px] rounded font-mono cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowClearConfirm(true)}
-                className="px-3.5 py-2 bg-neutral-900 hover:bg-red-950/40 text-neutral-400 hover:text-red-400 text-xs rounded border border-neutral-800 hover:border-red-900/40 font-medium transition-all duration-150 flex items-center space-x-1.5 cursor-pointer"
-                id="clear-history-trigger"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Clear History Logs</span>
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Database Empty State */}
-      {history.length === 0 ? (
+      {restoreError && (
+        <div className="mb-6 bg-red-500/[0.04] border border-red-900/40 rounded-lg p-4 flex items-start space-x-3 text-red-300 text-xs" id="history-restore-error">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="font-light">{restoreError}</span>
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading ? (
+        <div className="border border-dashed border-neutral-850 bg-neutral-900/10 rounded-xl p-8 sm:p-16 text-center shadow-md min-h-[350px] flex flex-col justify-center items-center space-y-4">
+          <Loader2 className="w-6 h-6 text-neutral-500 animate-spin" />
+          <span className="text-xs text-neutral-500 font-mono">Loading investigation history…</span>
+        </div>
+      ) : loadError ? (
+        <div className="border border-red-900/40 bg-red-500/[0.02] rounded-xl p-8 sm:p-16 text-center shadow-md min-h-[350px] flex flex-col justify-center items-center space-y-4" id="history-load-error">
+          <AlertCircle className="w-6 h-6 text-red-400" />
+          <p className="text-xs text-red-300 max-w-md">{loadError}</p>
+        </div>
+      ) : history.length === 0 ? (
         <div className="border border-dashed border-neutral-850 bg-neutral-900/10 rounded-xl p-8 sm:p-16 text-center shadow-md min-h-[350px] flex flex-col justify-center items-center space-y-5">
           <div className="w-12 h-12 rounded bg-neutral-950/80 border border-neutral-800 flex items-center justify-center text-neutral-500">
             <Database className="w-5 h-5 text-neutral-400 animate-pulse" />
@@ -232,9 +240,9 @@ export default function HistoryView({ onSelectHistory }: HistoryViewProps) {
                 <tbody className="divide-y divide-neutral-800/60 text-xs">
                   {currentItems.length > 0 ? (
                     currentItems.map((item) => (
-                      <tr 
+                      <tr
                         key={item.id}
-                        onClick={() => onSelectHistory(item)}
+                        onClick={() => handleSelect(item)}
                         className="hover:bg-neutral-800/35 transition-colors cursor-pointer group"
                       >
                         {/* Target & Summary */}
@@ -285,12 +293,17 @@ export default function HistoryView({ onSelectHistory }: HistoryViewProps) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              onSelectHistory(item);
+                              handleSelect(item);
                             }}
-                            className="p-1.5 bg-neutral-950/50 hover:bg-white hover:text-black rounded border border-neutral-800 hover:border-white text-neutral-400 transition-all text-[11px] font-semibold inline-flex items-center space-x-1 cursor-pointer"
+                            disabled={restoringId === item.id}
+                            className="p-1.5 bg-neutral-950/50 hover:bg-white hover:text-black rounded border border-neutral-800 hover:border-white text-neutral-400 transition-all text-[11px] font-semibold inline-flex items-center space-x-1 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                           >
-                            <span>Restore</span>
-                            <ArrowRight className="w-3 h-3" />
+                            <span>{restoringId === item.id ? "Loading…" : "Restore"}</span>
+                            {restoringId === item.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <ArrowRight className="w-3 h-3" />
+                            )}
                           </button>
                         </td>
                       </tr>
@@ -339,7 +352,7 @@ export default function HistoryView({ onSelectHistory }: HistoryViewProps) {
           <div className="bg-neutral-950/40 border border-neutral-800 p-4 rounded-xl flex items-start space-x-3 text-xs text-neutral-500 font-light leading-relaxed">
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-neutral-400" />
             <p>
-              Restoring previous results does not issue secondary HTTP POST requests to the Sentinel API Gateway. It instantly renders cached server responses stored in local relational logs, bypassing potential upstream crawler latency.
+              History is tied to your account and persists on the server (not just this browser). Restoring a result fetches the previously-generated report via <code className="text-neutral-400">GET /reports/:id</code> — it does not re-run the investigation or issue new connector/AI calls.
             </p>
           </div>
 

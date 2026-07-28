@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Key, Zap, Terminal, Plus, Shield, CheckCircle2, AlertTriangle, 
-  Trash2, RefreshCw, Eye, EyeOff, Copy, Check, Clock, Server, BarChart3, Database 
+import {
+  Key, Zap, Terminal, Plus, Shield, CheckCircle2, AlertTriangle,
+  Trash2, RefreshCw, Eye, EyeOff, Copy, Check, Clock, Server, BarChart3, Database
 } from "lucide-react";
 import { ApiKey, ExtractionJob, ApiMetrics } from "../types";
 
@@ -9,9 +9,9 @@ interface DashboardViewProps {
   apiKeys: ApiKey[];
   extractionJobs: ExtractionJob[];
   metrics: ApiMetrics | null;
-  onAddKey: (name: string, rateLimit: number) => void;
-  onRevokeKey: (id: string) => void;
-  onRotateKey: (id: string) => void;
+  onAddKey: (name: string, rateLimit: number) => Promise<boolean | string>;
+  onRevokeKey: (id: string) => Promise<boolean | string>;
+  onRotateKey: (id: string) => Promise<boolean | string>;
   setCurrentPage: (page: string) => void;
 }
 
@@ -28,9 +28,12 @@ export default function DashboardView({
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyLimit, setNewKeyLimit] = useState(300);
   const [isCreatingKey, setIsCreatingKey] = useState(false);
+  const [isSavingKey, setIsSavingKey] = useState(false);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [revealedKeyId, setRevealedKeyId] = useState<string | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [keysError, setKeysError] = useState<string | null>(null);
+  const [pendingKeyActionId, setPendingKeyActionId] = useState<string | null>(null);
 
   // Auto-clear clipboard checks
   useEffect(() => {
@@ -45,12 +48,39 @@ export default function DashboardView({
     setCopiedKeyId(id);
   };
 
-  const handleCreateKey = (e: React.FormEvent) => {
+  const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyName.trim()) return;
-    onAddKey(newKeyName, newKeyLimit);
+    setKeysError(null);
+    setIsSavingKey(true);
+    const result = await onAddKey(newKeyName, newKeyLimit);
+    setIsSavingKey(false);
+    if (result !== true) {
+      setKeysError(typeof result === "string" ? result : "Failed to create key.");
+      return;
+    }
     setNewKeyName("");
     setIsCreatingKey(false);
+  };
+
+  const handleRevoke = async (id: string) => {
+    setKeysError(null);
+    setPendingKeyActionId(id);
+    const result = await onRevokeKey(id);
+    setPendingKeyActionId(null);
+    if (result !== true) {
+      setKeysError(typeof result === "string" ? result : "Failed to revoke key.");
+    }
+  };
+
+  const handleRotate = async (id: string) => {
+    setKeysError(null);
+    setPendingKeyActionId(id);
+    const result = await onRotateKey(id);
+    setPendingKeyActionId(null);
+    if (result !== true) {
+      setKeysError(typeof result === "string" ? result : "Failed to rotate key.");
+    }
   };
 
   return (
@@ -165,6 +195,20 @@ export default function DashboardView({
             </button>
           </div>
 
+          {/* Key management errors */}
+          {keysError && (
+            <div className="bg-red-500/[0.04] border border-red-900/40 rounded-lg p-3.5 flex items-start space-x-2.5 text-red-300 text-xs" id="dashboard-keys-error">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="font-light">{keysError}</span>
+              <button
+                onClick={() => setKeysError(null)}
+                className="ml-auto text-red-400/70 hover:text-red-300 font-mono text-[10px] shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* Create Key Form overlay modal simulation inline */}
           {isCreatingKey && (
             <form onSubmit={handleCreateKey} className="bg-[#0a0a0f] border border-blue-900/20 rounded-xl p-5 space-y-4 max-w-md animate-fade-in">
@@ -197,14 +241,16 @@ export default function DashboardView({
               <div className="flex items-center space-x-2 pt-1.5">
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white cursor-pointer"
+                  disabled={isSavingKey}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                 >
-                  Generate Key
+                  {isSavingKey ? "Generating…" : "Generate Key"}
                 </button>
                 <button
                   type="button"
+                  disabled={isSavingKey}
                   onClick={() => setIsCreatingKey(false)}
-                  className="px-3.5 py-1.5 bg-gray-900 hover:bg-gray-800 rounded-lg text-xs font-medium text-gray-400 cursor-pointer"
+                  className="px-3.5 py-1.5 bg-gray-900 hover:bg-gray-800 rounded-lg text-xs font-medium text-gray-400 cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -282,15 +328,17 @@ export default function DashboardView({
                           {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                         <button
-                          onClick={() => onRotateKey(key.id)}
-                          className="p-1.5 rounded bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-blue-400 border border-gray-800/60"
+                          onClick={() => handleRotate(key.id)}
+                          disabled={pendingKeyActionId === key.id}
+                          className="p-1.5 rounded bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-blue-400 border border-gray-800/60 disabled:opacity-50 disabled:cursor-wait"
                           title="Rotate Token Credentials"
                         >
-                          <RefreshCw className="w-3.5 h-3.5" />
+                          <RefreshCw className={`w-3.5 h-3.5 ${pendingKeyActionId === key.id ? "animate-spin" : ""}`} />
                         </button>
                         <button
-                          onClick={() => onRevokeKey(key.id)}
-                          className="p-1.5 rounded bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-800/60"
+                          onClick={() => handleRevoke(key.id)}
+                          disabled={pendingKeyActionId === key.id}
+                          className="p-1.5 rounded bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-800/60 disabled:opacity-50 disabled:cursor-wait"
                           title="Revoke Credentials permanently"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -305,12 +353,20 @@ export default function DashboardView({
         </div>
       )}
 
-      {/* Extraction Logs */}
+      {/* Extraction Logs - jobs created via the POST /playground/transform API
+          endpoint (schema-based extraction, typically called by SDK/API
+          clients directly, see DocsView). Distinct from the Investigation
+          Playground UI above, which runs domain/email/company/username
+          investigations via /api/investigations instead - those show up in
+          "Investigation History" (the History page), not here. The two are
+          intentionally separate features with separate data, not a UI bug. */}
       {activeTab === "jobs" && (
         <div className="space-y-6 animate-fade-in">
           <div>
             <h3 className="text-sm font-semibold text-gray-200">Execution & Extraction Pipeline Logs</h3>
-            <p className="text-[11px] text-gray-500 font-light">Review real-time structured schema output payloads processed across our AI translation nodes.</p>
+            <p className="text-[11px] text-gray-500 font-light">
+              Structured schema-extraction jobs submitted via <code className="text-gray-400">POST /playground/transform</code> (typically by API/SDK clients — see Documentation). Investigations run in the Playground above appear under "Investigation History" instead.
+            </p>
           </div>
 
           <div className="border border-gray-900 rounded-xl overflow-hidden bg-[#0a0a0f]">

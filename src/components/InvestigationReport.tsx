@@ -8,22 +8,6 @@ import {
 import EntityGraph from "./EntityGraph";
 import { Entity, Relationship } from "../types";
 
-interface EntityNode {
-  id: string;
-  name: string;
-  type: string;
-  metadata?: Record<string, any>;
-  evidenceIds?: string[];
-}
-
-interface RelationshipEdge {
-  source: string;
-  target: string;
-  type: string;
-  metadata?: Record<string, any>;
-  evidenceIds?: string[];
-}
-
 interface TimelineEvent {
   date: string;
   event: string;
@@ -76,8 +60,8 @@ interface CanonicalEntity {
 interface InvestigationApiResponse {
   summary: string;
   executiveSummary: string;
-  entities: EntityNode[];
-  relationships: RelationshipEdge[];
+  entities: Entity[];
+  relationships: Relationship[];
   canonicalEntities?: CanonicalEntity[];
   timeline: TimelineEvent[];
   confidence: number;
@@ -381,7 +365,7 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                 SENTINEL INTEL PLATFORM // CYBER EMBEDDED INTEL
               </span>
               <h1 className="text-2xl font-bold font-sans tracking-tight text-black mt-1">
-                TACTICAL INTELLIGENCE BREIFING REPORT
+                TACTICAL INTELLIGENCE BRIEFING REPORT
               </h1>
             </div>
             <div className="text-right">

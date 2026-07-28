@@ -56,7 +56,18 @@ Reconstructed from git history plus this session's audit. Dates are commit/sessi
 - Added regression tests (`tests/observability.test.ts`, a new `cross-tenant isolation` describe block in `tests/server.test.ts`); 240/240 tests pass, lint clean, build succeeds.
 - Full detail in `docs/CHANGELOG_AI.md`; issue tracking updated in `docs/KNOWN_ISSUES.md`.
 
-## Open (as of 2026-07-28, end of Milestone 0)
+## Milestone 1: frontend correctness & functional gaps (2026-07-28)
+
+- Fixed the `RelationshipEdge` shape mismatch (`PlaygroundView.tsx` used `from`/`to`, which don't exist on the real API's `source`/`target` shape — relationships rendered blank) by importing canonical types from `src/types.ts`; found and fixed a second instance of the same bug class in the same file (`entity.confidence`/`entity.details`).
+- Resolved the `onAddJob` dead code by removing it rather than forcing a fake wire-up: Playground's UI runs investigations via `/api/investigations`, an entirely different feature from the `/playground/transform` (`ExtractionJob`) flow the old code assumed. Relabeled Dashboard's "Extraction History" tab to clarify the distinction.
+- Added a mobile navigation fallback (hamburger + slide-down panel) to `Layout.tsx` — Playground/History/Docs/Dashboard were previously unreachable below 768px.
+- Surfaced real error states for `App.tsx`'s login/key-management handlers, which previously had no `else` branch at all for non-OK HTTP responses (worse than console-log-only) — routed through `AuthView.tsx`/`DashboardView.tsx`'s existing local-error-state patterns.
+- Eliminated (not just reconciled) the two disconnected history data models: `HistoryView.tsx` now reads real per-tenant server history instead of an unscoped `localStorage` copy, made safe to do by Milestone 0's ownership fixes.
+- Fixed the "BREIFING" print-output typo.
+- Verified with `npm run test` (240/240), `npm run lint`, `npm run build`, plus a manual Playwright smoke-test pass against the running dev server with reviewed screenshots (mobile nav, login, key creation, a full investigation run, relationships rendering real data, and a history-restore round trip).
+- Full detail in `docs/CHANGELOG_AI.md`; issue tracking updated in `docs/KNOWN_ISSUES.md` — 0 Critical, 0 High issues remain open.
+
+## Open (as of 2026-07-28, end of Milestone 1)
 
 - rc.1 is still the declared version; a real `v1.0.0` tag has not been cut.
-- Milestone 1 (frontend correctness: mobile nav, Dashboard/Playground disconnect, `RelationshipEdge` shape mismatch) is next per `docs/ROADMAP.md`.
+- Milestone 2 (CI, Docker, OpenAPI completeness, npm audit fix, doc/contact cleanup) is next per `docs/ROADMAP.md`.

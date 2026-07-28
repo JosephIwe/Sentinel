@@ -7,52 +7,13 @@ import {
 } from "lucide-react";
 import { validateInvestigationInput } from "../utils/validation";
 import InvestigationReport from "./InvestigationReport";
-
-interface EntityNode {
-  id: string;
-  name: string;
-  type: string;
-  details?: string;
-  confidence: number;
-  evidenceIds?: string[];
-}
-
-interface RelationshipEdge {
-  from: string;
-  to: string;
-  type: string;
-  description?: string;
-  evidenceIds?: string[];
-}
-
-interface TimelineEvent {
-  date: string;
-  event: string;
-  description: string;
-  source: string;
-}
-
-interface Evidence {
-  id: string;
-  connector: string;
-  title: string;
-  description: string;
-  confidence: number;
-  timestamp: string;
-  rawData: any;
-}
-
-interface IntelligenceFinding {
-  statement: string;
-  type: "Verified Finding" | "AI Assessment";
-  evidenceIds: string[];
-}
+import { Entity, Relationship, TimelineEvent, Evidence, IntelligenceFinding } from "../types";
 
 interface InvestigationApiResponse {
   summary: string;
   executiveSummary: string;
-  entities: EntityNode[];
-  relationships: RelationshipEdge[];
+  entities: Entity[];
+  relationships: Relationship[];
   timeline: TimelineEvent[];
   confidence: number;
   recommendations: string[];
@@ -71,12 +32,11 @@ const QUICK_SAMPLES = [
 ];
 
 interface PlaygroundViewProps {
-  onAddJob?: (newJob: any) => void;
   initialResult?: any;
   onClearInitialResult?: () => void;
 }
 
-export default function PlaygroundView({ onAddJob, initialResult, onClearInitialResult }: PlaygroundViewProps = {}) {
+export default function PlaygroundView({ initialResult, onClearInitialResult }: PlaygroundViewProps = {}) {
   // Investigate Panel States
   const [type, setType] = useState<string>("domain");
   const [value, setValue] = useState<string>("");
@@ -86,49 +46,23 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [viewMode, setViewMode] = useState<"report" | "explorer">("report");
 
-  // Load selected history result on restore
+  // Load a history record selected on the History page. History now hands
+  // over an already-fetched, already-parsed report (see HistoryView.tsx's
+  // handleSelect), so there's no local JSON parsing that can fail here.
   React.useEffect(() => {
     if (initialResult) {
       setType(initialResult.type);
       setValue(initialResult.query);
-      try {
-        setResponse(JSON.parse(initialResult.resultJson));
-        setActiveTab("overview");
-        setViewMode("report");
-        setError(null);
-        setValidationMsg(null);
-      } catch (err) {
-        console.error("Failed to parse history result payload:", err);
-      }
+      setResponse(initialResult.report);
+      setActiveTab("overview");
+      setViewMode("report");
+      setError(null);
+      setValidationMsg(null);
       if (onClearInitialResult) {
         onClearInitialResult();
       }
     }
   }, [initialResult]);
-
-  // Helper to save successful investigation to localStorage history
-  const saveToHistory = (targetType: string, targetQuery: string, responseData: any) => {
-    try {
-      const historyJson = localStorage.getItem("sentinel_investigation_history") || "[]";
-      const historyList = JSON.parse(historyJson);
-      
-      const newRecord = {
-        id: "inv_" + Math.random().toString(36).substr(2, 9),
-        userId: "usr_sentinel_94921", // matches simulated user ID in server.ts
-        type: targetType,
-        query: targetQuery,
-        summary: responseData.summary || "Completed threat posture investigation.",
-        confidence: responseData.confidence || 100,
-        resultJson: JSON.stringify(responseData),
-        createdAt: new Date().toISOString()
-      };
-      
-      historyList.unshift(newRecord);
-      localStorage.setItem("sentinel_investigation_history", JSON.stringify(historyList));
-    } catch (err) {
-      console.error("Failed to save investigation record to local history storage:", err);
-    }
-  };
 
   // Orchestrator States
   const [isInvestigating, setIsInvestigating] = useState<boolean>(false);
@@ -221,7 +155,10 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
           if (jobData.status === "completed") {
             clearInterval(pollInterval);
             setResponse(jobData.report);
-            saveToHistory(type, value, jobData.report);
+            // The job's completion is already persisted server-side (see
+            // server.ts's InvestigationWorker onJobCompleted callback) and
+            // shows up under Investigation History automatically - no local
+            // history write needed here.
             setIsInvestigating(false);
           } else if (jobData.status === "failed") {
             clearInterval(pollInterval);
@@ -738,14 +675,14 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
                                   {entity.type}
                                 </span>
                               </div>
-                              {entity.details && (
+                              {entity.metadata?.details && (
                                 <p className="text-[11px] text-neutral-400 mt-2.5 leading-relaxed font-light">
-                                  {entity.details}
+                                  {entity.metadata.details}
                                 </p>
                               )}
                               <div className="mt-3.5 pt-2 border-t border-neutral-900 flex items-center justify-between text-[8px] font-mono text-neutral-500">
                                 <span>RESOLVER INDEX: #{idx + 1}</span>
-                                <span>CONFIDENCE: {entity.confidence || 100}%</span>
+                                <span>EVIDENCE LINKS: {entity.evidenceIds?.length || 0}</span>
                               </div>
                             </div>
                           ))}
@@ -774,8 +711,8 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
                           {response.relationships.map((relation, idx) => (
                             <div key={idx} className="bg-neutral-950/65 border border-neutral-855 p-4 flex flex-col justify-between hover:border-neutral-700 transition-all">
                               <div className="flex items-center justify-between text-[11px] font-mono">
-                                <span className="text-neutral-300 truncate max-w-[120px] font-medium" title={relation.from}>
-                                  {relation.from}
+                                <span className="text-neutral-300 truncate max-w-[120px] font-medium" title={relation.source}>
+                                  {relation.source}
                                 </span>
                                 <div className="flex flex-col items-center shrink-0 px-3">
                                   <span className="text-[7px] text-neutral-400 uppercase tracking-widest bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
@@ -783,13 +720,13 @@ export default function PlaygroundView({ onAddJob, initialResult, onClearInitial
                                   </span>
                                   <ArrowRight className="w-3 h-3 text-neutral-600 mt-1" />
                                 </div>
-                                <span className="text-neutral-300 truncate max-w-[120px] font-medium" title={relation.to}>
-                                  {relation.to}
+                                <span className="text-neutral-300 truncate max-w-[120px] font-medium" title={relation.target}>
+                                  {relation.target}
                                 </span>
                               </div>
-                              {relation.description && (
+                              {relation.metadata?.description && (
                                 <p className="text-[10px] text-neutral-400 font-light leading-relaxed border-t border-neutral-900 pt-2.5 mt-2.5">
-                                  {relation.description}
+                                  {relation.metadata.description}
                                 </p>
                               )}
                             </div>

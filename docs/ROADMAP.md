@@ -4,7 +4,7 @@ _Canonical roadmap. The root `ROADMAP.md` mirrors a summary of this file for dis
 
 ## Status
 
-A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-milestone plan below, replacing the earlier "close the RELEASE_CHECKLIST recommendations" framing with a severity-ordered plan that leads with a critical security finding. **The roadmap was approved by the user on 2026-07-28. Milestone 0 is complete** (see below); Milestone 1 is next and has not started.
+A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-milestone plan below, replacing the earlier "close the RELEASE_CHECKLIST recommendations" framing with a severity-ordered plan that leads with a critical security finding. **The roadmap was approved by the user on 2026-07-28. Milestones 0 and 1 are complete** (see below); Milestone 2 is next and has not started.
 
 ---
 
@@ -29,25 +29,23 @@ A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-
 
 ---
 
-## Milestone 1 — Frontend Correctness & Functional Gaps
+## Milestone 1 — Frontend Correctness & Functional Gaps ✅ COMPLETE (2026-07-28)
 
 **Objective**: fix real, user-visible functional bugs.
 
-**Tasks**:
-- Wire `onAddJob` so Dashboard reflects real Playground activity (or remove the dead prop/handler pair if the two views are meant to stay separate — make it a deliberate choice either way).
-- Resolve the `RelationshipEdge` shape mismatch by importing the type from `src/types.ts` in both `PlaygroundView.tsx` and `InvestigationReport.tsx` instead of local redefinitions; verify against the real API response which shape (`from/to` vs `source/target`) is actually correct.
-- Add a mobile navigation fallback (hamburger or equivalent) for viewports below `md:`.
-- Surface visible error states for `App.tsx`'s login/key-management handlers and the localStorage `JSON.parse` failure sites in `HistoryView.tsx`/`PlaygroundView.tsx`.
-- Fix the "BREIFING" typo in the print report.
-- Decide on and implement one path for reconciling the two disconnected history data models (server `extractionJobs` vs. localStorage history) — at minimum, share one shape between them even if they stay conceptually separate.
+**Tasks** (all complete — see `docs/CHANGELOG_AI.md` for full detail and `docs/KNOWN_ISSUES.md`'s "Already fixed" section):
+- [x] Resolved the `onAddJob` dead code: rather than force a fake mapping, removed it. Playground's UI runs investigations via `/api/investigations`, not the `/playground/transform` (`ExtractionJob`) flow `onAddJob` assumed — the two were never actually the same feature. Relabeled the Dashboard's "Extraction History" tab to clarify what it shows (API/SDK-driven schema extraction) versus "Investigation History" (Playground-run investigations).
+- [x] Resolved the `RelationshipEdge` shape mismatch by importing `Relationship`/`Entity` from `src/types.ts` in both `PlaygroundView.tsx` and `InvestigationReport.tsx`. The real API shape is `source`/`target` (confirmed against `server.ts`'s responses and `EntityGraph.tsx`'s existing correct usage) — `PlaygroundView.tsx`'s `from`/`to` was the broken one. Also fixed a second instance of the same bug class found in the process: `entity.confidence`/`entity.details` don't exist on the real `Entity` type either.
+- [x] Added a mobile navigation fallback: hamburger toggle + slide-down panel in `Layout.tsx`, covering all the same destinations as the desktop nav.
+- [x] Surfaced visible error states for `App.tsx`'s login/key-management handlers (worse than console-log-only — non-OK responses previously hit no branch at all) via `AuthView.tsx` and `DashboardView.tsx`'s existing local-error-state patterns.
+- [x] Fixed the "BREIFING" typo in the print report.
+- [x] Reconciled the two disconnected history data models — not by sharing a type, but by eliminating the duplication entirely: `HistoryView.tsx` now reads real per-tenant server history (`GET /api/history`, correctly scoped since Milestone 0) instead of an unscoped `localStorage` copy, and `PlaygroundView.tsx`'s redundant `saveToHistory()` was removed since the server already persists completions.
 
-**Dependencies**: independent of Milestone 0, can run in parallel.
+**Verification**: `npm run test` (240/240 passing — no new automated tests added this milestone, see Risks below), `npm run lint` (clean), `npm run build` (succeeds), plus a manual Playwright smoke-test pass against the running dev server (mobile hamburger nav, login → dashboard → key creation, investigation → relationships tab rendering real `source`/`target` values not `undefined`, and a full history-restore round trip) with screenshots reviewed.
 
-**Risks**: the history-model reconciliation could balloon into a bigger redesign if scoped loosely — recommend scoping to "share one type, not necessarily one store" unless product wants a bigger unification.
+**Risks encountered**: none blocking. The history-model fix ended up being a full elimination rather than the "share one type" fallback the original task description allowed for, since Milestone 0's ownership fixes had already made the server-side data safe to use directly — worth noting for future milestones that some Milestone 1-era workarounds may already be obsolete once earlier milestones land.
 
-**Estimated complexity**: Medium.
-
-**Expected outcome**: UI behaves consistently with what it visually promises; no silently-dead data paths.
+**Deferred**: automated frontend test coverage for these changes is still Milestone 3's job (no `@testing-library/react` yet); this milestone's UI verification was manual/visual only.
 
 ---
 
