@@ -46,9 +46,17 @@ Reconstructed from git history plus this session's audit. Dates are commit/sessi
 - **Discovered a critical, previously-unreported cross-tenant IDOR** spanning `/keys`, `/jobs`, `/history`, `/reports/:id`, `/investigations/:jobId`, rooted in a shared API-key identity model.
 - Found 7 additional High-severity bugs (fake dashboard chart, dead `onAddJob` wiring, mobile nav gap, non-cancellable jobs, duplicated-type shape mismatch, scoring date drift, a 5th error-leak site), plus 20 Medium and 10 Low findings — all catalogued in the new `docs/KNOWN_ISSUES.md`.
 - Established the full `docs/` project-memory system (`PROJECT_OVERVIEW.md`, `KNOWN_ISSUES.md`, `CHANGELOG_AI.md` new; `CURRENT_STATUS.md`, `ROADMAP.md`, `TECH_DECISIONS.md`, `NEXT_SESSION.md` rewritten with code-verified findings).
-- Proposed a 7-milestone prioritized plan (`docs/ROADMAP.md`) starting with the IDOR fix. **No implementation performed yet — awaiting user approval.**
+- Proposed a 7-milestone prioritized plan (`docs/ROADMAP.md`) starting with the IDOR fix. Roadmap approved by the user the same day.
 
-## Open (as of 2026-07-28)
+## Milestone 0: security & trust emergency fixes (2026-07-28)
+
+- Fixed the critical cross-tenant IDOR: every API key now carries its own `ownerId`; `/keys`, `/jobs`, `/history`, `/reports/:id`, `/investigations/:jobId`, and `/metrics` are all scoped to the caller instead of a shared identity.
+- Fixed the 5th `err.message` leak site (`utils/observability.ts`'s `errorHandler`), the scoring engine's hardcoded absolute-year date drift, the Dashboard's fabricated usage chart (replaced with an honest placeholder), and non-functional job cancellation (now threads a real `AbortSignal`).
+- Found and fixed one bug not on the original list: a redundant, incorrect API-key stat-tracking block in `/playground/transform`.
+- Added regression tests (`tests/observability.test.ts`, a new `cross-tenant isolation` describe block in `tests/server.test.ts`); 240/240 tests pass, lint clean, build succeeds.
+- Full detail in `docs/CHANGELOG_AI.md`; issue tracking updated in `docs/KNOWN_ISSUES.md`.
+
+## Open (as of 2026-07-28, end of Milestone 0)
 
 - rc.1 is still the declared version; a real `v1.0.0` tag has not been cut.
-- Milestone 0 (Critical/High security & correctness fixes, led by the IDOR issue) is the top-priority next task once the roadmap is approved.
+- Milestone 1 (frontend correctness: mobile nav, Dashboard/Playground disconnect, `RelationshipEdge` shape mismatch) is next per `docs/ROADMAP.md`.

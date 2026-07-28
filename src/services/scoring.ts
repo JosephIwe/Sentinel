@@ -263,6 +263,19 @@ export class ScoringService {
   }
 
   /**
+   * Age of a registration date in whole years relative to now, so
+   * "newly registered" / "long established" classifications stay correct as
+   * time passes instead of drifting against hardcoded calendar years.
+   * Returns null for an unparseable date so callers can fall back safely.
+   */
+  private ageInYears(dateStr: string): number | null {
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed.getTime())) return null;
+    const msPerYear = 365.25 * 24 * 60 * 60 * 1000;
+    return (Date.now() - parsed.getTime()) / msPerYear;
+  }
+
+  /**
    * Deterministically evaluates a risk rule.
    */
   private evaluateRiskRule(id: string, result: InvestigationResult): { matched: boolean; reason?: string } {
@@ -306,8 +319,8 @@ export class ScoringService {
           if (e.id === "ev_whois_record_match" && e.rawData) {
             const reg = e.rawData.registered || e.rawData.creationDate;
             if (reg) {
-              const yr = new Date(reg).getFullYear();
-              if (yr >= 2024) return true;
+              const age = this.ageInYears(reg);
+              if (age !== null && age >= 0 && age < 2) return true;
             }
           }
           const text = `${e.title} ${e.description}`.toLowerCase();
@@ -369,8 +382,8 @@ export class ScoringService {
           if (e.id === "ev_whois_record_match" && e.rawData) {
             const reg = e.rawData.registered || e.rawData.creationDate;
             if (reg) {
-              const yr = new Date(reg).getFullYear();
-              if (yr < 2018) return true;
+              const age = this.ageInYears(reg);
+              if (age !== null && age > 5) return true;
             }
           }
           const text = `${e.title} ${e.description}`.toLowerCase();
@@ -378,8 +391,8 @@ export class ScoringService {
         });
         return {
           matched: !!oldReg,
-          reason: oldReg 
-            ? "Registry has strong historic tenure (registered prior to 2018)." 
+          reason: oldReg
+            ? "Registry has strong historic tenure (registered over 5 years ago)."
             : "No extended historical standing established."
         };
       }

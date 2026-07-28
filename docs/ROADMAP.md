@@ -4,29 +4,28 @@ _Canonical roadmap. The root `ROADMAP.md` mirrors a summary of this file for dis
 
 ## Status
 
-A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-milestone plan below, replacing the earlier "close the RELEASE_CHECKLIST recommendations" framing with a severity-ordered plan that leads with a critical security finding. **This plan is proposed and awaiting explicit user approval before implementation begins** (Phase 5 has not started).
+A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-milestone plan below, replacing the earlier "close the RELEASE_CHECKLIST recommendations" framing with a severity-ordered plan that leads with a critical security finding. **The roadmap was approved by the user on 2026-07-28. Milestone 0 is complete** (see below); Milestone 1 is next and has not started.
 
 ---
 
-## Milestone 0 — Security & Trust Emergency Fixes
+## Milestone 0 — Security & Trust Emergency Fixes ✅ COMPLETE (2026-07-28)
 
 **Objective**: close every Critical/High-severity issue from `docs/KNOWN_ISSUES.md`, led by the cross-tenant IDOR — this is the one thing that should not wait behind anything else.
 
-**Tasks**:
-- Design and implement real per-tenant identity for API-key auth (see `docs/TECH_DECISIONS.md`'s "Open architectural gap" note — this needs a deliberate design choice, not a bolt-on filter).
-- Add ownership checks to `GET/PUT /keys*`, `GET /jobs`, `GET /history`, `GET /reports/:id`, `GET /investigations/:jobId`.
-- Fix `utils/observability.ts`'s `errorHandler` to gate `err.message` behind `NODE_ENV !== "production"` (matching the same fix already needed in `server.ts`'s 4 inline catch blocks — do both together).
-- Fix `scoring.ts`'s hardcoded absolute-year thresholds to compute relative to `Date.now()`.
-- Either wire the Dashboard's usage chart to real `metrics` data or remove it — it must not show fake data as if live.
-- Implement real job cancellation (thread an `AbortSignal`/cancellation token into `investigate()` and the Gemini call, not just a status flag).
+**Tasks** (all complete — see `docs/CHANGELOG_AI.md` for full detail and `docs/KNOWN_ISSUES.md`'s "Already fixed" section):
+- [x] Designed and implemented real per-tenant identity for API-key auth: each key now carries its own `ownerId`, resolved into `req.user.id` in `authenticateRequest` instead of the old shared `usr_api_client`.
+- [x] Added ownership checks to `GET/PUT/POST /keys*`, `GET /jobs`, `GET /history`, `GET /reports/:id`, `GET /investigations/:jobId`, and `GET /metrics` (found to have the same cross-tenant aggregation problem while fixing the rest).
+- [x] Fixed `utils/observability.ts`'s `errorHandler` to gate `err.message` behind `NODE_ENV !== "production"`, matching the same fix applied to `server.ts`'s 4 inline catch blocks via a shared `errorDetails()` helper.
+- [x] Fixed `scoring.ts`'s hardcoded absolute-year thresholds (`risk_newly_registered`/`risk_long_established`) to compute domain age relative to `Date.now()`.
+- [x] Replaced the Dashboard's fake usage chart with an honest "not tracked yet" placeholder (no real per-hour telemetry exists to wire it to; fabricating one would repeat the exact problem being fixed).
+- [x] Implemented real job cancellation: an `AbortSignal` is now threaded through `InvestigationService.investigate()` and `IntelligenceService.analyze()`, so not-yet-started connectors are skipped, an in-flight GitHub-discovery fetch is genuinely aborted, and the billed Gemini call is skipped in favor of the free deterministic fallback when cancellation lands first. Also fixed a related bug where a job cancelled before its deferred start got silently overwritten back to `"running"`.
+- [x] Bonus fix found while implementing the above (not on the original list): removed a redundant, incorrect stat-tracking block in `/playground/transform` that bumped an arbitrary "first active key's" usage counters regardless of who actually called it.
 
-**Dependencies**: none — can start immediately once approved.
+**Verification**: `npm run test` (240/240 passing, including a new `cross-tenant isolation` describe block in `tests/server.test.ts` and a new `tests/observability.test.ts`), `npm run lint` (clean), `npm run build` (succeeds).
 
-**Risks**: the identity-model change touches `authenticateRequest` broadly and every route that currently assumes a single shared user; must not break existing API-key holders' basic auth flow. Needs new tests written against the final shape (coordinate with Milestone 3).
+**Risks encountered**: TypeScript's control-flow narrowing initially broke on removing the `(job.status as string)` cast in `investigationWorker.ts` — the cast wasn't dead code as originally assessed in the audit, it was working around a real narrowing limitation (TS can't see `cancelJob` mutating the job object asynchronously via the shared map). Fixed properly with an `isCancelled()` helper that re-reads through a fresh parameter binding, rather than reintroducing an unsafe cast.
 
-**Estimated complexity**: Large overall (the identity redesign is the hard part), but each individual task is S–M in isolation.
-
-**Expected outcome**: no cross-tenant data exposure; no error-message leakage; scoring stays correct as time passes; nothing in the UI shows fabricated data as real; cancelled jobs actually stop.
+**Deferred to Milestone 1** (still open, downgraded from the original "High" bucket now that the Critical item and 4 of the original 7 High items are fixed): mobile nav gap, Dashboard/Playground disconnect (`onAddJob` dead code), `RelationshipEdge` shape mismatch.
 
 ---
 

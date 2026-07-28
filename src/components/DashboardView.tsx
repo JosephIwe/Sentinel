@@ -53,28 +53,6 @@ export default function DashboardView({
     setIsCreatingKey(false);
   };
 
-  // Generate beautiful interactive SVG data points representing Linear/Stripe style charts
-  const chartPoints = [
-    { hour: "00:00", requests: 2400 },
-    { hour: "04:00", requests: 3800 },
-    { hour: "08:00", requests: 5200 },
-    { hour: "12:00", requests: 9400 },
-    { hour: "16:00", requests: 7100 },
-    { hour: "20:00", requests: 4600 },
-    { hour: "24:00", requests: 3100 },
-  ];
-
-  const maxRequests = Math.max(...chartPoints.map(p => p.requests));
-  const svgWidth = 600;
-  const svgHeight = 160;
-
-  // Map request stats to SVG points
-  const pointsString = chartPoints.map((p, idx) => {
-    const x = (idx / (chartPoints.length - 1)) * (svgWidth - 40) + 20;
-    const y = svgHeight - ((p.requests / maxRequests) * (svgHeight - 40) + 20);
-    return `${x},${y}`;
-  }).join(" ");
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full flex-grow flex flex-col justify-start">
       {/* Upper Dashboard Header */}
@@ -140,86 +118,28 @@ export default function DashboardView({
             })}
           </div>
 
-          {/* Interactive Request Chart */}
+          {/* Ingress Distribution placeholder - this used to render a fully
+              hardcoded 24h line chart with fabricated numbers, unconnected to
+              `metrics`, styled to look like live telemetry. Sentinel's core
+              product principle is to never present fabricated data as real
+              (see docs/TECH_DECISIONS.md), so rather than keep inventing
+              numbers, this is an honest "not tracked yet" state until
+              request-level, timestamped usage logging exists to back a real
+              chart. */}
           <div className="bg-[#0a0a0f] border border-gray-900 rounded-xl p-6 relative">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-sm font-semibold text-gray-200">Ingress Distribution (24h)</h3>
-                <p className="text-[11px] text-gray-500 font-light">Developer requests routed across global edge instances</p>
-              </div>
-              <div className="flex items-center space-x-4 font-mono text-[10px]">
-                <span className="flex items-center text-blue-400">
-                  <span className="w-2 h-2 bg-blue-400 rounded-full mr-1.5" />
-                  Ingress Inbound
-                </span>
-                <span className="text-gray-500">P99 Rate Limit: OK</span>
+                <p className="text-[11px] text-gray-500 font-light">Time-series request distribution for your keys</p>
               </div>
             </div>
-
-            {/* SVG Line Graph */}
-            <div className="w-full overflow-x-auto">
-              <svg className="w-full min-w-[500px]" viewBox={`0 0 ${svgWidth} ${svgHeight}`} fill="none">
-                {/* Horizontal Gridlines */}
-                {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-                  const y = svgHeight - (ratio * (svgHeight - 40) + 20);
-                  return (
-                    <line
-                      key={i}
-                      x1="20"
-                      y1={y}
-                      x2={svgWidth - 20}
-                      y2={y}
-                      stroke="#111827"
-                      strokeDasharray="4 4"
-                      strokeWidth="1"
-                    />
-                  );
-                })}
-
-                {/* Gradient area under the path */}
-                <defs>
-                  <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.15" />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d={`M 20,${svgHeight - 20} L ${pointsString} L ${svgWidth - 20},${svgHeight - 20} Z`}
-                  fill="url(#chartGlow)"
-                />
-
-                {/* SVG Core Path Line */}
-                <polyline
-                  fill="none"
-                  stroke="#3b82f6"
-                  strokeWidth="2"
-                  points={pointsString}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-
-                {/* Highlight Circle Dots */}
-                {chartPoints.map((p, idx) => {
-                  const x = (idx / (chartPoints.length - 1)) * (svgWidth - 40) + 20;
-                  const y = svgHeight - ((p.requests / maxRequests) * (svgHeight - 40) + 20);
-                  return (
-                    <g key={idx} className="group/dot cursor-pointer">
-                      <circle cx={x} cy={y} r="3" fill="#3b82f6" />
-                      <circle cx={x} cy={y} r="7" className="stroke-blue-500/30 fill-transparent opacity-0 group-hover/dot:opacity-100 transition-opacity" strokeWidth="2" />
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-
-            {/* Time labels below SVG */}
-            <div className="flex justify-between px-5 font-mono text-[9px] text-gray-500 border-t border-gray-900/60 pt-3 mt-1">
-              {chartPoints.map((p, i) => (
-                <div key={i} className="text-center">
-                  <span className="block text-gray-400 font-medium">{p.hour}</span>
-                  <span className="block text-[8px] text-gray-600 font-light">{p.requests.toLocaleString()} req</span>
-                </div>
-              ))}
+            <div className="flex flex-col items-center justify-center text-center py-10 border border-dashed border-gray-900 rounded-lg">
+              <BarChart3 className="w-6 h-6 text-gray-700 mb-2" />
+              <p className="text-xs text-gray-500 font-medium">Hourly breakdown not yet tracked</p>
+              <p className="text-[10px] text-gray-600 font-light mt-1 max-w-xs">
+                Sentinel currently reports lifetime totals only (see the stats above). A real-time chart will
+                appear here once per-request, timestamped usage logging is added.
+              </p>
             </div>
           </div>
         </div>
