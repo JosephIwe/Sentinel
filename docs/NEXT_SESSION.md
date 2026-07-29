@@ -1,18 +1,20 @@
 # Next Session
 
-_Written 2026-07-28, after shipping the `TechnologyFingerprintConnector`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
+_Written 2026-07-28, after expanding the `TechnologyFingerprintConnector` to full spec on branch `feature/technology-fingerprinting`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
 
 ## Where things stand
 
-Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion has begun**. The first of the four planned connectors — `TechnologyFingerprintConnector` — is shipped as Beta and registered in the live pipeline.
+Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion has begun**. The first of the four planned connectors — `TechnologyFingerprintConnector` (`src/connectors/technologyFingerprint.ts`) — is shipped as Beta, registered in the live pipeline, and surfaced in the investigation report as section 9 with expandable evidence and detection diagnostics.
 
-Suite is at **256 tests, all passing**; lint clean; build succeeds; 0 `npm audit` findings.
+Suite is at **269 tests, all passing**; lint clean; build succeeds; 0 `npm audit` findings.
+
+**Uncommitted-scope note**: the connector work lives on branch `feature/technology-fingerprinting`, not the usual `claude/*` branch. `docs/PROJECT_OVERVIEW.md` still references the connector's pre-rename filename (`techfingerprint.ts` → now `technologyFingerprint.ts`) because that file was outside the session's explicit "update only" documentation list — a one-line fix for whoever picks this up.
 
 ## Highest-priority task: `CertificateTransparencyConnector`
 
 The second of the four v1.1 connectors per `docs/ROADMAP.md`. It queries Certificate Transparency logs (e.g. crt.sh) for certificates issued to the target domain — surfacing subdomains, issuance history, and issuing CAs.
 
-**Follow `docs/CONNECTOR_RELEASE_CHECKLIST.md` exactly.** `src/connectors/techfingerprint.ts` is the freshest reference implementation and the closest structural match (single outbound HTTP call, same status semantics, same caching/timeout pattern).
+**Follow `docs/CONNECTOR_RELEASE_CHECKLIST.md` exactly.** `src/connectors/technologyFingerprint.ts` is the freshest reference implementation and the closest structural match (single outbound HTTP call, same status semantics, same caching/timeout pattern).
 
 **Non-negotiables, learned the hard way on this project:**
 - Query a **real external source**; never synthesize evidence. `NO_DATA` and `ERROR` are correct outcomes.
@@ -22,7 +24,7 @@ The second of the four v1.1 connectors per `docs/ROADMAP.md`. It queries Certifi
 - Set the connector's internal timeout *below* the orchestrator's 5000ms default so its own descriptive error surfaces rather than a generic outer TIMEOUT.
 - Emit a specific entity `type`, never `Generic` (which is eligible for the entity resolver's cross-type wildcard match).
 
-**Testing gotcha that will bite you**: `InvestigationService` keeps *static* full-investigation and per-connector caches that outlive service instances. Integration tests must use a **distinct hostname per test**, or later tests silently receive earlier tests' cached results. See the note at the top of `tests/techfingerprint-integration.test.ts`.
+**Testing gotcha that will bite you**: `InvestigationService` keeps *static* full-investigation and per-connector caches that outlive service instances. Integration tests must use a **distinct hostname per test**, or later tests silently receive earlier tests' cached results. See the note at the top of `tests/technologyFingerprint-integration.test.ts`.
 
 ## Alternative parallel track: Milestone 3 — Test Coverage & Quality Hardening
 

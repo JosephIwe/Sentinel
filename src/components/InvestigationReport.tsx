@@ -1905,12 +1905,149 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* Technology Fingerprinting Section */}
+          {(() => {
+            const techStatus = response.connectorStatuses?.find(
+              (s: any) => s.name === "Technology Fingerprint Resolver"
+            );
+            if (!techStatus) return null;
+
+            // Every technology finding is an evidence item whose id is
+            // prefixed ev_techfp_ - read them straight from the evidence
+            // list so the table can never disagree with the evidence.
+            const techEvidences = (response.evidences || []).filter(ev =>
+              ev.id?.startsWith("ev_techfp_")
+            );
+            // Diagnostics are carried on each finding's rawData (the pipeline
+            // aggregates evidence, not connector-level rawData), so reading
+            // the first one is sufficient.
+            const diagnostics = techEvidences[0]?.rawData?.diagnostics;
+            const detected = techStatus.status === "SUCCESS" && techEvidences.length > 0;
+
+            const confidenceTone = (c: number) =>
+              c >= 90 ? "text-emerald-400" : c >= 78 ? "text-neutral-200" : "text-amber-400";
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="technology-fingerprint-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <Code2 className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>9. Technology Fingerprinting</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        detected
+                          ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                          : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {detected ? `${techEvidences.length} DETECTED` : techStatus.status}
+                    </span>
+                  </div>
+
+                  {!detected ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {techStatus.status === "ERROR"
+                        ? `Technology fingerprinting could not be completed: ${techStatus.error || "the target was unreachable"}.`
+                        : "The target was reached successfully, but no technology signature was matched."}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-neutral-800/80 print:border-neutral-300 text-[9px] font-mono text-neutral-500 uppercase tracking-widest">
+                              <th className="py-2 pr-3 font-bold">Technology</th>
+                              <th className="py-2 pr-3 font-bold">Category</th>
+                              <th className="py-2 pr-3 font-bold">Confidence</th>
+                              <th className="py-2 font-bold">Detected Via</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-neutral-800/50 print:divide-neutral-200">
+                            {techEvidences.map(ev => {
+                              const raw: any = ev.rawData || {};
+                              return (
+                                <tr key={ev.id} className="align-top">
+                                  <td className="py-2.5 pr-3">
+                                    <span className="text-xs font-semibold text-neutral-100 print:text-black">
+                                      {raw.technology || ev.title}
+                                    </span>
+                                    {raw.version && (
+                                      <span className="ml-1.5 text-[10px] font-mono text-neutral-400">
+                                        v{raw.version}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 pr-3">
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 print:bg-neutral-100 print:border-neutral-300 text-neutral-300 print:text-black rounded">
+                                      {raw.category || "Unclassified"}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 pr-3">
+                                    <span className={`text-xs font-mono font-bold ${confidenceTone(ev.confidence)} print:text-black`}>
+                                      {ev.confidence}%
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5">
+                                    <span className="text-[10px] font-mono text-neutral-400 print:text-neutral-700 break-all">
+                                      {raw.matchedOn || "—"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={techEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Detection diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Detection Time</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">
+                              {diagnostics.detectionTimeMs}ms
+                            </span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Technologies</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">
+                              {diagnostics.technologiesFound}
+                            </span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg col-span-2">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Detection Methods</span>
+                            <span className="text-[10px] text-neutral-300 print:text-black font-mono break-all">
+                              {(diagnostics.detectionMethods || []).join(", ") || "—"}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>9. Strategic Security & Countermeasure Recommendations</span>
+                <span>10. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (

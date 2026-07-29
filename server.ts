@@ -8,7 +8,7 @@ import { WhoisConnector } from "./src/connectors/whois";
 import { DnsConnector } from "./src/connectors/dns";
 import { GithubIntelligenceConnector } from "./src/connectors/github-intel";
 import { SecurityTxtConnector } from "./src/connectors/securitytxt";
-import { TechnologyFingerprintConnector } from "./src/connectors/techfingerprint";
+import { TechnologyFingerprintConnector } from "./src/connectors/technologyFingerprint";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
 import { InvestigationWorker } from "./src/services/investigationWorker";

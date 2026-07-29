@@ -163,7 +163,7 @@ This milestone was executed under a tighter, explicitly-scoped instruction set t
 
 Originally held behind Milestones 0–3 (shipping connectors on top of an unfixed IDOR would just expose more data to the same bug). Unblocked once Milestones 0–2 closed the IDOR, added ownership regression tests, and completed release engineering.
 
-- [x] `TechnologyFingerprintConnector` — **Beta, shipped 2026-07-28.** Identifies web technologies from directly observable signal only (response headers, `Set-Cookie` names, `<meta name="generator">`, distinctive markup/asset markers). Every detection records its exact source and the literal observed value; versions only when literally present. Emits `Technology` entities linked to the target `Domain` via `RUNS_TECHNOLOGY`. 16 tests (12 unit + 4 pipeline integration); real-domain smoke tests exercised all three status paths.
+- [x] `TechnologyFingerprintConnector` — **Beta, shipped 2026-07-28.** Lives at `src/connectors/technologyFingerprint.ts`. Detects hosting/CDN, cloud platform, web server, framework, CMS, analytics, and security-header posture from six observable surfaces (response headers, security headers, `Set-Cookie` names, `<meta generator>`, framework runtime globals, and parsed `<script src>`/`<link rel=stylesheet>` URLs). Emits `Technology` entities linked to the target `Domain` via `RUNS_TECHNOLOGY`, plus per-run diagnostics (detection time, methods applied, technology count). Surfaced in the report as section 9, "Technology Fingerprinting", with expandable evidence. 29 tests.
 - [ ] `CertificateTransparencyConnector`
 - [ ] `ShodanConnector`
 - [ ] `Crawl4AI WebFootprintConnector`

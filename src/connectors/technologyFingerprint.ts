@@ -12,9 +12,12 @@ interface CacheEntry {
  */
 type MatchSource =
   | "header"
+  | "security-header"
   | "cookie"
   | "meta-generator"
-  | "html-marker";
+  | "html-marker"
+  | "script-url"
+  | "css-url";
 
 interface Detection {
   /** Canonical technology name, e.g. "nginx", "WordPress". */
@@ -46,7 +49,33 @@ const VENDOR_HEADER_SIGNATURES: Array<{ header: string; technology: string; cate
   { header: "x-github-request-id", technology: "GitHub Pages", category: "Hosting" },
   { header: "x-shopify-stage", technology: "Shopify", category: "Ecommerce" },
   { header: "x-drupal-cache", technology: "Drupal", category: "CMS" },
-  { header: "x-akamai-transformed", technology: "Akamai", category: "CDN" }
+  { header: "x-akamai-transformed", technology: "Akamai", category: "CDN" },
+  { header: "x-akamai-request-id", technology: "Akamai", category: "CDN" },
+  // Cloud provider infrastructure headers. x-amz-request-id / x-amz-id-2 are
+  // emitted by S3 and other AWS services; x-azure-ref / x-ms-request-id by
+  // Azure Front Door and Azure services; x-goog-* by Google Cloud Storage.
+  { header: "x-amz-request-id", technology: "AWS", category: "Cloud Platform" },
+  { header: "x-amz-id-2", technology: "AWS", category: "Cloud Platform" },
+  { header: "x-azure-ref", technology: "Azure", category: "Cloud Platform" },
+  { header: "x-ms-request-id", technology: "Azure", category: "Cloud Platform" },
+  { header: "x-goog-generation", technology: "Google Cloud", category: "Cloud Platform" },
+  { header: "x-guploader-uploadid", technology: "Google Cloud", category: "Cloud Platform" }
+];
+
+/**
+ * Security response headers. Presence is a directly observable configuration
+ * fact - not an inference - so these carry high confidence. The header's
+ * value is recorded because, unlike vendor trace IDs, it is the meaningful
+ * part (the actual policy in force).
+ */
+const SECURITY_HEADER_SIGNATURES: Array<{ header: string; technology: string }> = [
+  { header: "strict-transport-security", technology: "HSTS" },
+  { header: "content-security-policy", technology: "Content Security Policy" },
+  { header: "content-security-policy-report-only", technology: "Content Security Policy (Report-Only)" },
+  { header: "referrer-policy", technology: "Referrer Policy" },
+  { header: "permissions-policy", technology: "Permissions Policy" },
+  { header: "x-content-type-options", technology: "X-Content-Type-Options" },
+  { header: "x-frame-options", technology: "X-Frame-Options" }
 ];
 
 /**
@@ -80,7 +109,54 @@ const HTML_MARKER_SIGNATURES: Array<{ pattern: RegExp; technology: string; categ
   { pattern: /static1\.squarespace\.com/i, technology: "Squarespace", category: "Website Builder" },
   { pattern: /static\.wixstatic\.com/i, technology: "Wix", category: "Website Builder" },
   { pattern: /Drupal\.settings/i, technology: "Drupal", category: "CMS" },
-  { pattern: /\/media\/jui\/js\//i, technology: "Joomla", category: "CMS" }
+  { pattern: /\/media\/jui\/js\//i, technology: "Joomla", category: "CMS" },
+  // Framework runtime globals / hydration markers. Each is a namespaced
+  // identifier a page would not contain by coincidence.
+  { pattern: /__REACT_DEVTOOLS_GLOBAL_HOOK__/i, technology: "React", category: "Framework" },
+  { pattern: /data-reactroot/i, technology: "React", category: "Framework" },
+  { pattern: /__VUE_DEVTOOLS_GLOBAL_HOOK__/i, technology: "Vue", category: "Framework" },
+  { pattern: /<astro-island/i, technology: "Astro", category: "Framework" },
+  { pattern: /\/_astro\//i, technology: "Astro", category: "Framework" },
+  { pattern: /\/_app\/immutable\//i, technology: "Svelte", category: "Framework" },
+  { pattern: /__sveltekit_/i, technology: "Svelte", category: "Framework" }
+];
+
+/**
+ * Signatures matched against extracted <script src> and <link rel=stylesheet
+ * href> URLs specifically, rather than the whole document. Scoping these to
+ * real asset URLs is the primary false-positive defence: a page that merely
+ * *mentions* "google-analytics" in prose will not match, because only the
+ * parsed URL list is searched.
+ */
+const ASSET_URL_SIGNATURES: Array<{ pattern: RegExp; technology: string; category: string }> = [
+  // Analytics
+  { pattern: /googletagmanager\.com\/gtm\.js/i, technology: "Google Tag Manager", category: "Analytics" },
+  { pattern: /googletagmanager\.com\/gtag\/js/i, technology: "Google Analytics", category: "Analytics" },
+  { pattern: /google-analytics\.com\/(analytics|ga)\.js/i, technology: "Google Analytics", category: "Analytics" },
+  { pattern: /plausible\.io\/js\//i, technology: "Plausible", category: "Analytics" },
+  // Frameworks shipped as recognizable bundles
+  { pattern: /\/react(-dom)?[@.\-][\d.]*(production|development)?[.\w-]*\.js/i, technology: "React", category: "Framework" },
+  { pattern: /\/vue(@|\.runtime|\.global|\.min)[\w.@-]*\.js/i, technology: "Vue", category: "Framework" },
+  { pattern: /\/_next\/static\//i, technology: "Next.js", category: "Framework" },
+  { pattern: /\/_nuxt\//i, technology: "Nuxt", category: "Framework" },
+  { pattern: /\/_astro\//i, technology: "Astro", category: "Framework" },
+  { pattern: /\/_app\/immutable\//i, technology: "Svelte", category: "Framework" },
+  // CMS asset paths
+  { pattern: /\/wp-content\//i, technology: "WordPress", category: "CMS" },
+  { pattern: /\/wp-includes\//i, technology: "WordPress", category: "CMS" },
+  { pattern: /\/sites\/(all|default)\/(themes|modules|files)\//i, technology: "Drupal", category: "CMS" },
+  { pattern: /\/media\/jui\/js\//i, technology: "Joomla", category: "CMS" },
+  { pattern: /\/assets\/built\/(casper|source)/i, technology: "Ghost", category: "CMS" },
+  // CDN / hosting asset hosts
+  { pattern: /cdn\.shopify\.com/i, technology: "Shopify", category: "Ecommerce" },
+  { pattern: /static1\.squarespace\.com/i, technology: "Squarespace", category: "Website Builder" },
+  { pattern: /static\.wixstatic\.com/i, technology: "Wix", category: "Website Builder" },
+  { pattern: /\.cloudfront\.net/i, technology: "Amazon CloudFront", category: "CDN" },
+  { pattern: /\.akamaized\.net/i, technology: "Akamai", category: "CDN" },
+  { pattern: /\.s3[.\-][\w-]*\.?amazonaws\.com/i, technology: "AWS", category: "Cloud Platform" },
+  { pattern: /storage\.googleapis\.com/i, technology: "Google Cloud", category: "Cloud Platform" },
+  { pattern: /\.azureedge\.net/i, technology: "Azure", category: "Cloud Platform" },
+  { pattern: /\.blob\.core\.windows\.net/i, technology: "Azure", category: "Cloud Platform" }
 ];
 
 /**
@@ -96,7 +172,15 @@ const SERVER_HEADER_PRODUCTS: Array<{ token: string; technology: string; categor
   { token: "openresty", technology: "OpenResty", category: "Web Server" },
   { token: "cloudflare", technology: "Cloudflare", category: "CDN" },
   { token: "gunicorn", technology: "Gunicorn", category: "Application Server" },
-  { token: "cowboy", technology: "Cowboy", category: "Application Server" }
+  { token: "cowboy", technology: "Cowboy", category: "Application Server" },
+  { token: "amazons3", technology: "AWS", category: "Cloud Platform" },
+  { token: "awselb", technology: "AWS", category: "Cloud Platform" },
+  { token: "google frontend", technology: "Google Cloud", category: "Cloud Platform" },
+  { token: "gse", technology: "Google Cloud", category: "Cloud Platform" },
+  { token: "windows-azure", technology: "Azure", category: "Cloud Platform" },
+  { token: "ghost", technology: "Ghost", category: "CMS" },
+  { token: "netlify", technology: "Netlify", category: "Hosting" },
+  { token: "vercel", technology: "Vercel", category: "Hosting" }
 ];
 
 /**
@@ -114,10 +198,12 @@ const POWERED_BY_PRODUCTS: Array<{ token: string; technology: string; category: 
 
 // Confidence tiers, ordered by how directly the signal identifies the
 // technology. Direct self-identification outranks conventional markers.
-const CONFIDENCE_SELF_REPORTED = 90; // Server, X-Powered-By, meta generator
-const CONFIDENCE_VENDOR_HEADER = 85; // Proprietary headers unique to a vendor
-const CONFIDENCE_HTML_MARKER = 78;   // Distinctive markup/asset paths
-const CONFIDENCE_COOKIE = 70;        // Conventional cookie names (customizable)
+const CONFIDENCE_SECURITY_HEADER = 95; // Header presence IS the fact being reported
+const CONFIDENCE_SELF_REPORTED = 90;   // Server, X-Powered-By, meta generator
+const CONFIDENCE_VENDOR_HEADER = 85;   // Proprietary headers unique to a vendor
+const CONFIDENCE_ASSET_URL = 82;       // Matched against parsed script/CSS URLs
+const CONFIDENCE_HTML_MARKER = 78;     // Distinctive markup/runtime globals
+const CONFIDENCE_COOKIE = 70;          // Conventional cookie names (customizable)
 
 const MAX_VALUE_LENGTH = 200;
 const MAX_HTML_BYTES = 512 * 1024; // Cap parsed HTML at 512KB.
@@ -269,40 +355,145 @@ export class TechnologyFingerprintConnector implements Connector {
       return this.buildErrorResult(timestamp, url, httpStatus, contentType, responseTimeMs, message);
     }
 
+    // Tracks which detection passes actually contributed, for diagnostics.
+    const methodsApplied: MatchSource[] = [];
+    const record = (source: MatchSource, found: Detection[]): Detection[] => {
+      if (found.length > 0 && !methodsApplied.includes(source)) methodsApplied.push(source);
+      return found;
+    };
+
     // Header- and cookie-derived detections do not require a readable body,
     // so collect them even if the body turns out to be unreadable.
-    const detections: Detection[] = [
-      ...this.detectFromHeaders(res.headers),
-      ...this.detectFromCookies(res.headers)
-    ];
+    const detections: Detection[] = [];
+    const headerDetections = this.detectFromHeaders(res.headers);
+    detections.push(...headerDetections);
+    if (headerDetections.length > 0) methodsApplied.push("header");
+    detections.push(...record("security-header", this.detectSecurityHeaders(res.headers)));
+    detections.push(...record("cookie", this.detectFromCookies(res.headers)));
 
     let body = "";
+    let bodyReadFailed = false;
     try {
       body = await res.text();
     } catch (err: any) {
       // A body we cannot read is not a failed check - header/cookie signal
       // already gathered above remains valid. Record it and continue.
+      bodyReadFailed = true;
       console.warn(`[TechFingerprint] Could not read response body for ${url}: ${err.message || "unknown error"}.`);
     }
 
+    let scriptUrlCount = 0;
+    let cssUrlCount = 0;
+
     if (body) {
       const truncatedBody = body.length > MAX_HTML_BYTES ? body.slice(0, MAX_HTML_BYTES) : body;
-      detections.push(...this.detectFromHtml(truncatedBody));
+
+      const htmlDetections = this.detectFromHtml(truncatedBody);
+      detections.push(...htmlDetections);
+      if (htmlDetections.some(d => d.matchSource === "meta-generator")) methodsApplied.push("meta-generator");
+      if (htmlDetections.some(d => d.matchSource === "html-marker")) methodsApplied.push("html-marker");
+
+      // Asset URLs are extracted and matched separately from the raw
+      // document so that prose merely *mentioning* a vendor cannot match.
+      const { scriptUrls, cssUrls } = this.extractAssetUrls(truncatedBody);
+      scriptUrlCount = scriptUrls.length;
+      cssUrlCount = cssUrls.length;
+      detections.push(...record("script-url", this.detectFromAssetUrls(scriptUrls, "script-url")));
+      detections.push(...record("css-url", this.detectFromAssetUrls(cssUrls, "css-url")));
     }
 
     const merged = this.dedupeDetections(detections);
+    const detectionTimeMs = Date.now() - startedAt;
+
+    const diagnostics = {
+      detectionTimeMs,
+      detectionMethods: Array.from(new Set(methodsApplied)),
+      technologiesFound: merged.length,
+      scriptUrlsInspected: scriptUrlCount,
+      cssUrlsInspected: cssUrlCount,
+      bodyReadFailed
+    };
 
     if (merged.length === 0) {
-      const noDataResult = this.buildNoDataResult(timestamp, url, httpStatus, contentType, responseTimeMs);
+      const noDataResult = this.buildNoDataResult(timestamp, url, httpStatus, contentType, responseTimeMs, diagnostics);
       TechnologyFingerprintConnector.cache.set(domain, { result: noDataResult, timestamp: Date.now() });
       return noDataResult;
     }
 
     const result = this.buildSuccessResult(
-      timestamp, domain, url, httpStatus, contentType, responseTimeMs, merged, body.length
+      timestamp, domain, url, httpStatus, contentType, responseTimeMs, merged, body.length, diagnostics
     );
     TechnologyFingerprintConnector.cache.set(domain, { result, timestamp: Date.now() });
     return result;
+  }
+
+  /**
+   * Extracts `<script src>` and `<link rel=stylesheet href>` URLs. Matching
+   * signatures against this parsed list - rather than the whole document -
+   * is the connector's main false-positive defence.
+   */
+  private extractAssetUrls(html: string): { scriptUrls: string[]; cssUrls: string[] } {
+    const scriptUrls: string[] = [];
+    const cssUrls: string[] = [];
+
+    const scriptRegex = /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi;
+    let match: RegExpExecArray | null;
+    while ((match = scriptRegex.exec(html)) !== null) {
+      if (match[1]) scriptUrls.push(match[1].trim());
+    }
+
+    // Only <link> tags that actually declare a stylesheet relationship.
+    const linkRegex = /<link\b[^>]*>/gi;
+    while ((match = linkRegex.exec(html)) !== null) {
+      const tag = match[0];
+      if (!/\brel\s*=\s*["'][^"']*stylesheet[^"']*["']/i.test(tag)) continue;
+      const href = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+      if (href && href[1]) cssUrls.push(href[1].trim());
+    }
+
+    return { scriptUrls, cssUrls };
+  }
+
+  private detectFromAssetUrls(urls: string[], source: MatchSource): Detection[] {
+    const detections: Detection[] = [];
+    for (const url of urls) {
+      for (const signature of ASSET_URL_SIGNATURES) {
+        if (signature.pattern.test(url)) {
+          detections.push({
+            technology: signature.technology,
+            category: signature.category,
+            matchSource: source,
+            matchedOn: `${source}:${signature.pattern.source}`,
+            matchedValue: this.truncate(url),
+            confidence: CONFIDENCE_ASSET_URL
+          });
+        }
+      }
+    }
+    return detections;
+  }
+
+  /**
+   * Detects security response headers. Unlike vendor trace-ID headers, the
+   * value here is the meaningful part (the policy actually in force), so it
+   * is recorded.
+   */
+  private detectSecurityHeaders(headers: Headers): Detection[] {
+    const detections: Detection[] = [];
+    for (const signature of SECURITY_HEADER_SIGNATURES) {
+      const value = headers.get(signature.header);
+      if (value !== null && value !== undefined && value !== "") {
+        detections.push({
+          technology: signature.technology,
+          category: "Security",
+          matchSource: "security-header",
+          matchedOn: `header:${signature.header}`,
+          matchedValue: this.truncate(value),
+          confidence: CONFIDENCE_SECURITY_HEADER
+        });
+      }
+    }
+    return detections;
   }
 
   /**
@@ -505,7 +696,8 @@ export class TechnologyFingerprintConnector implements Connector {
     contentType: string | undefined,
     responseTimeMs: number | undefined,
     detections: Array<Detection & { corroboratingSources: string[] }>,
-    htmlBytes: number
+    htmlBytes: number,
+    diagnostics: Record<string, any>
   ): ConnectorResult {
     const evidences: Evidence[] = [];
     const entities: Entity[] = [];
@@ -544,7 +736,13 @@ export class TechnologyFingerprintConnector implements Connector {
           matchedOn: detection.matchedOn,
           matchedValue: detection.matchedValue,
           corroboratingSources: detection.corroboratingSources,
-          urlChecked: url
+          urlChecked: url,
+          // Detection-run diagnostics are attached to each finding because
+          // the pipeline aggregates connector *evidence* into the final
+          // InvestigationResult but not connector-level rawData - this is
+          // the only way for the report to surface them without changing
+          // the investigation pipeline.
+          diagnostics
         },
         verified: true,
         source: url,
@@ -608,6 +806,7 @@ export class TechnologyFingerprintConnector implements Connector {
         contentType,
         responseTimeMs,
         htmlBytes,
+        diagnostics,
         technologiesDetected: detections.length,
         technologies: detections.map(d => ({
           technology: d.technology,
@@ -627,7 +826,8 @@ export class TechnologyFingerprintConnector implements Connector {
     urlChecked: string,
     httpStatus: number | undefined,
     contentType: string | undefined,
-    responseTimeMs: number | undefined
+    responseTimeMs: number | undefined,
+    diagnostics: Record<string, any>
   ): ConnectorResult {
     return {
       connectorName: this.name,
@@ -645,6 +845,7 @@ export class TechnologyFingerprintConnector implements Connector {
         httpStatus,
         contentType,
         responseTimeMs,
+        diagnostics,
         technologiesDetected: 0,
         info: "The page was retrieved successfully but matched no known technology signature."
       }

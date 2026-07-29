@@ -6,6 +6,31 @@ Entries prior to 2026-07-28 are reconstructed from git history for continuity, s
 
 ---
 
+## 2026-07-28 — Technology Fingerprinting: expansion to full spec (branch `feature/technology-fingerprinting`)
+
+**Prompted by**: a detailed spec for a Technology Fingerprinting connector — detection surfaces, technology list, report section, diagnostics, test matrix, and a dedicated feature branch.
+
+**Important context**: a Technology Fingerprinting connector **already existed** from the immediately preceding session (`src/connectors/techfingerprint.ts`, registered in the pipeline, 16 tests). Creating a second one at the spec's requested path would have produced exactly the duplicate/dead-code problem this project treats as a defect. Instead the existing connector was **renamed** (`git mv`) to the requested `src/connectors/technologyFingerprint.ts` and extended to cover the parts of the spec it did not yet meet. Tests were renamed to match. This was flagged to the user in the response rather than done silently.
+
+**Gap analysis performed before writing code** (existing → required):
+- Already covered: Server/X-Powered-By/X-Generator headers, vendor CDN headers, `<meta generator>`, HTML markers, cookies, SUCCESS/NO_DATA/ERROR, evidence shape, Cloudflare/Fastly/Akamai/Vercel/Netlify/nginx/Apache/IIS/Caddy/Next/Nuxt/Angular/WordPress/Drupal/Joomla.
+- Missing and added: AWS, Azure, Google Cloud, React, Vue, Svelte, Astro, Ghost, Google Analytics, Google Tag Manager, Plausible; security headers (HSTS, CSP, Referrer-Policy, Permissions-Policy, plus X-Content-Type-Options and X-Frame-Options); script-URL and CSS-URL inspection; per-run diagnostics; the report section.
+
+**Design decisions**:
+- **Asset-URL inspection is the primary false-positive defence.** `<script src>` and `<link rel=stylesheet href>` URLs are parsed out and signatures matched against *that list*, not the raw document. A page whose prose says "we migrated from WordPress to Drupal and use Google Analytics and React" therefore yields `NO_DATA` — there is an explicit test asserting exactly this. Framework bundle patterns additionally require a real filename shape, so `?ref=we-love-react-and-vue` in a query string does not match.
+- **Security headers get the *highest* confidence (95)**, above self-identification. For every other signal, the header is a proxy for an underlying technology and could in principle mislead; for `Strict-Transport-Security`, the header's presence *is* the fact being reported. Their values are recorded (unlike vendor trace IDs) because the policy in force is the meaningful content.
+- **`<link rel>` is checked before treating an href as a stylesheet**, so `rel="preconnect"` hints are not mistaken for CSS assets — covered by a test.
+- **Diagnostics are attached to each finding's `rawData`, not the connector result's.** This is a deliberate workaround, not an oversight: the pipeline aggregates connector *evidence* into the final `InvestigationResult` but drops connector-level `rawData`, and the spec forbade modifying the investigation pipeline. Attaching diagnostics per-finding was the only way to surface detection time/method/count in the report without touching forbidden code. It costs a small duplication across findings. Caught during implementation — the first version of the report section read `rawData.diagnostics` from a place the data never reached, which type-checked fine and would have silently rendered nothing.
+- **Report section reads from the evidence list**, filtering `ev_techfp_*`, so the table can never disagree with the evidence it cites. Inserted as section 9; "Recommendations" renumbered 9 → 10.
+
+**Verification**: 269/269 tests (was 256 — 13 added), lint clean, build succeeds. The report section was verified *in a real browser* against a live investigation of `github.com`, not just type-checked: the table rendered 6 technologies with category/confidence/detected-via, the `EvidenceViewer` expansion was clicked and confirmed to reveal the raw matched value, and the diagnostics tiles showed 140ms / 6 technologies / `header, security-header`. Screenshot reviewed.
+
+**Sample real output** — `pypi.org` → SUCCESS, 41ms, 7 technologies: Gunicorn (90, `header:server`), HSTS/CSP/Referrer-Policy/Permissions-Policy/X-Content-Type-Options/X-Frame-Options (95 each). `registry.npmjs.org` → Cloudflare at 93 (90 + corroboration from `server` and `cf-ray`).
+
+**Not done, deliberately**: the spec's "update only" list excluded `docs/PROJECT_OVERVIEW.md`, which still references the pre-rename filename `techfingerprint.ts`. Left stale rather than silently exceeding the stated documentation scope; flagged in the response for a follow-up.
+
+---
+
 ## 2026-07-28 — v1.1 connector expansion: TechnologyFingerprintConnector (implementation)
 
 **Prompted by**: user instruction to begin implementing the Technology Fingerprinting connector, the first of the four planned v1.1 connectors.

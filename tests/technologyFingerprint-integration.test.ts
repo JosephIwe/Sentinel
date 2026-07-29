@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import net from "net";
 import dns from "dns/promises";
 import { InvestigationService } from "../src/services/investigation";
-import { TechnologyFingerprintConnector } from "../src/connectors/techfingerprint";
+import { TechnologyFingerprintConnector } from "../src/connectors/technologyFingerprint";
 import { Connector, ConnectorResult, InvestigationQuery } from "../src/types";
 
 vi.mock("dns/promises", () => ({

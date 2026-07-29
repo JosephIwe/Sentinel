@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import net from "net";
 import dns from "dns/promises";
-import { TechnologyFingerprintConnector } from "../src/connectors/techfingerprint";
+import { TechnologyFingerprintConnector } from "../src/connectors/technologyFingerprint";
 
 // safeFetch resolves the hostname before every request - replicate real
 // dns.lookup behavior for literal IPs and let each test register the
@@ -57,7 +57,16 @@ describe("TechnologyFingerprintConnector", () => {
       "nodata.example.com": "93.184.216.34",
       "timeout.example.com": "93.184.216.34",
       "servererror.example.com": "93.184.216.34",
-      "versionless.example.com": "93.184.216.34"
+      "versionless.example.com": "93.184.216.34",
+      "assets.example.com": "93.184.216.34",
+      "security.example.com": "93.184.216.34",
+      "analytics.example.com": "93.184.216.34",
+      "cloud.example.com": "93.184.216.34",
+      "invalidhtml.example.com": "93.184.216.34",
+      "empty.example.com": "93.184.216.34",
+      "netfail.example.com": "93.184.216.34",
+      "falsepositive.example.com": "93.184.216.34",
+      "diagnostics.example.com": "93.184.216.34"
     });
   });
 
@@ -303,6 +312,253 @@ describe("TechnologyFingerprintConnector", () => {
 
       expect(result.verified).toBe(true);
       expect(result.sources).toEqual(["https://headers.example.com/"]);
+    });
+  });
+
+  describe("asset URL inspection (script / CSS)", () => {
+    it("detects frameworks and analytics from <script src> URLs", async () => {
+      mockFetchResponse({
+        body: `<html><head>
+          <script src="https://www.googletagmanager.com/gtag/js?id=G-ABC123"></script>
+          <script src="/_next/static/chunks/main.js"></script>
+        </head><body></body></html>`
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "analytics.example.com",
+        type: "Domain"
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      const ga = result.evidences.find(e => e.id === "ev_techfp_google_analytics");
+      expect(ga?.rawData.matchSource).toBe("script-url");
+      expect(ga?.rawData.category).toBe("Analytics");
+      expect(result.evidences.find(e => e.id === "ev_techfp_next_js")).toBeDefined();
+    });
+
+    it("detects technologies from stylesheet <link href> URLs", async () => {
+      mockFetchResponse({
+        body: `<html><head>
+          <link rel="stylesheet" href="/wp-content/themes/twentytwenty/style.css">
+        </head></html>`
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "assets.example.com",
+        type: "Domain"
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      const wp = result.evidences.find(e => e.id === "ev_techfp_wordpress");
+      expect(wp).toBeDefined();
+      expect(["css-url", "html-marker"]).toContain(wp?.rawData.matchSource);
+    });
+
+    it("ignores non-stylesheet <link> tags when collecting CSS URLs", async () => {
+      mockFetchResponse({
+        body: `<html><head>
+          <link rel="preconnect" href="https://cdn.shopify.com">
+        </head></html>`
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "assets.example.com",
+        type: "Domain"
+      });
+
+      // The preconnect hint is not a stylesheet, so it must not be inspected
+      // as a CSS asset. Any Shopify finding here could only come from the
+      // whole-document marker pass, never from css-url.
+      const shopify = result.evidences.find(e => e.id === "ev_techfp_shopify");
+      expect(shopify?.rawData.matchSource).not.toBe("css-url");
+    });
+  });
+
+  describe("security headers", () => {
+    it("reports HSTS, CSP, Referrer-Policy and Permissions-Policy with their actual values", async () => {
+      mockFetchResponse({
+        headers: {
+          "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+          "Content-Security-Policy": "default-src 'self'",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "geolocation=()"
+        },
+        body: "<html></html>"
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "security.example.com",
+        type: "Domain"
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      const hsts = result.evidences.find(e => e.id === "ev_techfp_hsts");
+      expect(hsts?.confidence).toBe(95);
+      expect(hsts?.rawData.category).toBe("Security");
+      // Unlike vendor trace IDs, the policy value IS the finding.
+      expect(hsts?.rawData.matchedValue).toContain("max-age=63072000");
+
+      expect(result.evidences.find(e => e.id === "ev_techfp_content_security_policy")).toBeDefined();
+      expect(result.evidences.find(e => e.id === "ev_techfp_referrer_policy")).toBeDefined();
+      expect(result.evidences.find(e => e.id === "ev_techfp_permissions_policy")).toBeDefined();
+    });
+
+    it("does not report a security header that is absent or empty", async () => {
+      mockFetchResponse({
+        headers: { "Strict-Transport-Security": "", Server: "nginx" },
+        body: "<html></html>"
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "security.example.com",
+        type: "Domain"
+      });
+
+      expect(result.evidences.find(e => e.id === "ev_techfp_hsts")).toBeUndefined();
+    });
+  });
+
+  describe("cloud platform detection", () => {
+    it("detects AWS, Azure and Google Cloud from their infrastructure headers", async () => {
+      mockFetchResponse({
+        headers: { "x-amz-request-id": "REQ123", "x-azure-ref": "AZ123", "x-goog-generation": "1" },
+        body: "<html></html>"
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "cloud.example.com",
+        type: "Domain"
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      expect(result.evidences.find(e => e.id === "ev_techfp_aws")?.rawData.category).toBe("Cloud Platform");
+      expect(result.evidences.find(e => e.id === "ev_techfp_azure")).toBeDefined();
+      expect(result.evidences.find(e => e.id === "ev_techfp_google_cloud")).toBeDefined();
+    });
+  });
+
+  describe("resilience and edge cases", () => {
+    it("still reports header-derived findings when the HTML body is invalid/unparseable", async () => {
+      mockFetchResponse({
+        headers: { Server: "nginx/1.25.0" },
+        body: "<<<>>> not really html at all &&& <script src= unterminated"
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "invalidhtml.example.com",
+        type: "Domain"
+      });
+
+      // Malformed markup must not throw, and must not discard valid header signal.
+      expect(result.status).toBe("SUCCESS");
+      expect(result.evidences.find(e => e.id === "ev_techfp_nginx")).toBeDefined();
+    });
+
+    it("returns NO_DATA for a completely empty response body with no headers", async () => {
+      mockFetchResponse({ headers: {}, body: "" });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "empty.example.com",
+        type: "Domain"
+      });
+
+      expect(result.status).toBe("NO_DATA");
+      expect(result.evidences).toEqual([]);
+      expect(result.rawData.diagnostics.technologiesFound).toBe(0);
+    });
+
+    it("returns ERROR on a network failure, never a false NO_DATA", async () => {
+      global.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED")) as any;
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "netfail.example.com",
+        type: "Domain"
+      });
+
+      expect(result.status).toBe("ERROR");
+      expect(result.error).toMatch(/could not reach/i);
+      expect(result.evidences).toEqual([]);
+    });
+
+    it("handles a response with no headers at all without throwing", async () => {
+      mockFetchResponse({ headers: {}, body: "<html><body>plain</body></html>" });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "empty.example.com",
+        type: "Domain"
+      });
+
+      expect(["NO_DATA", "SUCCESS"]).toContain(result.status);
+      expect(result.error).toBeUndefined();
+    });
+  });
+
+  describe("false-positive prevention", () => {
+    it("does not detect a technology merely named in page prose", async () => {
+      mockFetchResponse({
+        body: `<html><body>
+          <article>
+            We migrated from WordPress to Drupal last year, and we use
+            Google Analytics and React on our other properties. Our CDN is Cloudflare.
+          </article>
+        </body></html>`
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "falsepositive.example.com",
+        type: "Domain"
+      });
+
+      // None of these are backed by a header, asset URL, runtime global or
+      // generator tag - only prose - so none may be reported.
+      expect(result.status).toBe("NO_DATA");
+      expect(result.evidences).toEqual([]);
+    });
+
+    it("does not treat a bare mention inside a script URL's query string as a framework bundle", async () => {
+      mockFetchResponse({
+        body: `<html><head>
+          <script src="/analytics/collect.js?ref=we-love-react-and-vue"></script>
+        </head></html>`
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "falsepositive.example.com",
+        type: "Domain"
+      });
+
+      // The bundle-name patterns require a real react/vue filename, not the
+      // words appearing in a query parameter.
+      expect(result.evidences.find(e => e.id === "ev_techfp_react")).toBeUndefined();
+      expect(result.evidences.find(e => e.id === "ev_techfp_vue")).toBeUndefined();
+    });
+  });
+
+  describe("diagnostics", () => {
+    it("reports detection time, methods applied and technology count", async () => {
+      mockFetchResponse({
+        headers: { Server: "nginx/1.25.0", "Strict-Transport-Security": "max-age=3600" },
+        body: `<html><head>
+          <meta name="generator" content="WordPress 6.5">
+          <script src="/wp-content/themes/x/app.js"></script>
+          <link rel="stylesheet" href="/wp-content/themes/x/style.css">
+        </head></html>`
+      });
+
+      const result = await new TechnologyFingerprintConnector().run({
+        term: "diagnostics.example.com",
+        type: "Domain"
+      });
+
+      const d = result.rawData.diagnostics;
+      expect(typeof d.detectionTimeMs).toBe("number");
+      expect(d.detectionTimeMs).toBeGreaterThanOrEqual(0);
+      expect(d.technologiesFound).toBe(result.evidences.length);
+      expect(d.detectionMethods).toEqual(
+        expect.arrayContaining(["header", "security-header", "meta-generator", "script-url", "css-url"])
+      );
+      expect(d.scriptUrlsInspected).toBe(1);
+      expect(d.cssUrlsInspected).toBe(1);
     });
   });
 });

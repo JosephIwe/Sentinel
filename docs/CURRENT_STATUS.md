@@ -10,7 +10,7 @@ _Last reviewed: 2026-07-28, after the post-Milestone-2 release-readiness correct
 
 ## Verified build health (ran directly, not inferred from docs)
 
-- `npm run test`: **240/240 tests pass** across 21 files (unchanged count — Milestone 2 was release-engineering, not feature work, so no new test suites).
+- `npm run test`: **269/269 tests pass** across 23 files (240 → 256 with the Technology Fingerprint connector, → 269 after expanding it to cover security headers, asset-URL inspection, cloud platforms, and false-positive prevention).
 - `npm run lint` (`tsc --noEmit`): clean, zero errors.
 - `npm run build`: succeeds. Client ~399kB JS (gzip ~102kB) + ~81kB CSS (gzip ~13kB); server bundle ~257kB.
 - `npm audit`: **0 vulnerabilities** (was 1 high-severity postcss advisory, fixed via `npm audit fix` — a patch-level bump, 8.5.17 → 8.5.24, `package-lock.json`-only diff).
@@ -46,7 +46,7 @@ _Last reviewed: 2026-07-28, after the post-Milestone-2 release-readiness correct
 
 ## Connectors (`docs/CONNECTOR_SCORECARD.md`)
 
-WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Technology Fingerprint: Beta (shipped 2026-07-28). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted (recent sessions were explicitly scoped away from touching connectors).
+WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Technology Fingerprint: Beta (shipped 2026-07-28, expanded same day with security-header, asset-URL and cloud-platform detection plus a dedicated report section). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted (recent sessions were explicitly scoped away from touching connectors).
 
 ## Status of this documentation system
 
