@@ -11,6 +11,38 @@ see `CHANGELOG.md` for the history of each addition.
 | GitHub Intelligence | Stable | TBD | TBD | 0 | Low |
 | SecurityTxt | Beta | TBD | TBD | 0 | Medium |
 | Technology Fingerprint | Beta | TBD | TBD | 0 | Medium |
+| Certificate Transparency | Beta | TBD | TBD | 0 | Medium |
+| ASN / IP Intelligence | Beta | TBD | TBD | 0 | Low |
+| RDAP Intelligence | Beta | TBD | TBD | 0 | Medium |
+| Reverse DNS | Beta | TBD | TBD | 0 | Low |
+| HTTP Security Headers | Beta | TBD | TBD | 0 | Low |
+
+**HTTP Security Headers — classification and confidence tiers**
+
+Shipped 2026-07-30 (PR #15). Inspects twelve headers over HTTPS; the response
+body is never read. Each header is classified, and the classification decides
+whether its *absence* is reportable — an absent `Server` header is the
+desirable state, not a finding.
+
+| Classification | Headers | Absence reported? |
+|---|---|---|
+| `SECURITY` | HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP, COEP, CORP | Yes |
+| `INFORMATIONAL` | Cache-Control | No |
+| `DISCLOSURE` | Server, X-Powered-By | No — presence is the finding |
+
+| Evidence | Confidence | Rationale |
+|---|---|---|
+| `ev_headers_present` | 97 | The header and its value are read straight off the response |
+| `ev_headers_missing` | 95 | Absence from a response that was actually received |
+| `ev_headers_disclosure` | 94 | Verbatim self-identification; no product or version inferred |
+| `ev_headers_observations` | 92 | A literal reading of a value, carrying the exact text it came from |
+
+Observations are mechanical readings, never a verdict on the site, and no
+value is scored or graded — `ScoringService` is untouched. **Overlap with
+Technology Fingerprinting on HSTS/CSP/Referrer-Policy/Permissions-Policy is
+intentional**: that connector does signature *detection* (presence as a
+technology signal), this one does security-control *analysis* and value
+interpretation.
 
 **Technology Fingerprint — detection surfaces and confidence tiers**
 

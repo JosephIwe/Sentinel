@@ -1,6 +1,6 @@
 # Current Status
 
-_Last reviewed: 2026-07-28, after the post-Milestone-2 release-readiness correction, against the working tree on `claude/project-memory-review-cqx488`. `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` have now been reconciled against this file — all three agree._
+_Last reviewed: 2026-07-30, after merging the HTTP Security Headers connector (PR #15) into `main` at `14ae921`. `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` were reconciled against this file on 2026-07-28 and have not been revisited since; the connector-expansion entries below are newer than those two files._
 
 ## Release state
 
@@ -10,7 +10,7 @@ _Last reviewed: 2026-07-28, after the post-Milestone-2 release-readiness correct
 
 ## Verified build health (ran directly, not inferred from docs)
 
-- `npm run test`: **269/269 tests pass** across 23 files (240 → 256 with the Technology Fingerprint connector, → 269 after expanding it to cover security headers, asset-URL inspection, cloud platforms, and false-positive prevention).
+- `npm run test`: **423/423 tests pass** across 28 files (269 → 423 as the v1.1 connectors landed: Certificate Transparency +21, ASN / IP Intelligence +30, RDAP +34, Reverse DNS +31, HTTP Security Headers +38).
 - `npm run lint` (`tsc --noEmit`): clean, zero errors.
 - `npm run build`: succeeds. Client ~399kB JS (gzip ~102kB) + ~81kB CSS (gzip ~13kB); server bundle ~257kB.
 - `npm audit`: **0 vulnerabilities** (was 1 high-severity postcss advisory, fixed via `npm audit fix` — a patch-level bump, 8.5.17 → 8.5.24, `package-lock.json`-only diff).
@@ -46,7 +46,11 @@ _Last reviewed: 2026-07-28, after the post-Milestone-2 release-readiness correct
 
 ## Connectors (`docs/CONNECTOR_SCORECARD.md`)
 
-WHOIS, DNS, GitHub Intelligence: Stable. SecurityTxt: Beta (shipped 2026-07-22). Technology Fingerprint: Beta (shipped 2026-07-28, expanded same day with security-header, asset-URL and cloud-platform detection plus a dedicated report section). Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted (recent sessions were explicitly scoped away from touching connectors).
+**Ten connectors are registered in the live pipeline** (`server.ts` DI array): WHOIS, DNS, GitHub Intelligence (Stable); SecurityTxt (Beta, 2026-07-22); Technology Fingerprint (Beta, 2026-07-28); Certificate Transparency (Beta, 2026-07-29); ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers (Beta, all 2026-07-30).
+
+DNSSEC is implemented and tested on branch `feature/dnssec` but **not yet merged** — it needs its report section renumbered to 15 (Recommendations → 16) first, since it was branched from a `main` that ended at section 13.
+
+Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted.
 
 ## Status of this documentation system
 
