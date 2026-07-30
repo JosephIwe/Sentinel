@@ -172,6 +172,8 @@ The app serves the Vite-powered frontend and the Express API together at `http:/
 | `RDAP_BOOTSTRAP_URL` | No | `https://data.iana.org/rdap/dns.json` | IANA RDAP bootstrap registry (RFC 7484); override only to use a mirror. |
 | `REVERSE_DNS_CACHE_TTL_MS` | No | `300000` | Reverse DNS (PTR) lookup cache TTL (5 minutes). |
 | `REVERSE_DNS_TIMEOUT_MS` | No | `4000` | Reverse DNS per-lookup timeout (4 seconds). |
+| `HTTPHEADERS_CACHE_TTL_MS` | No | `1800000` | HTTP security header inspection cache TTL (30 minutes). |
+| `HTTPHEADERS_TIMEOUT_MS` | No | `4000` | HTTP security header per-request timeout (4 seconds). |
 
 See [`.env.example`](.env.example) and [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, annotated list.
 
