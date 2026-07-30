@@ -2947,12 +2947,204 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* DNSSEC Section */}
+          {(() => {
+            const dnssecStatus = response.connectorStatuses?.find(
+              (s: any) => s.name === "DNSSEC Validator"
+            );
+            if (!dnssecStatus) return null;
+
+            const dnssecEvidences = (response.evidences || []).filter(ev => ev.id?.startsWith("ev_dnssec_"));
+            const statusEv = dnssecEvidences.find(ev => ev.id === "ev_dnssec_status");
+            const dsEv = dnssecEvidences.find(ev => ev.id === "ev_dnssec_ds");
+            const dnskeyEv = dnssecEvidences.find(ev => ev.id === "ev_dnssec_dnskey");
+            const denialEv = dnssecEvidences.find(ev => ev.id === "ev_dnssec_denial");
+            const answered = dnssecStatus.status === "SUCCESS" && !!statusEv;
+            const diagnostics = statusEv?.rawData?.diagnostics;
+
+            const enabled = !!statusEv?.rawData?.dnssecEnabled;
+            const validationStatus: string = statusEv?.rawData?.validationStatus || "";
+            const dsRecords: any[] = dsEv?.rawData?.dsRecords || [];
+            const dnskeyRecords: any[] = dnskeyEv?.rawData?.dnskeyRecords || [];
+            const matchedToDs: number[] = dnskeyEv?.rawData?.matchedToDs || [];
+
+            const statusTone = !enabled
+              ? "text-amber-400 bg-amber-500/10 border border-amber-500/20"
+              : validationStatus === "SECURE"
+              ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+              : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50";
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="dnssec-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <ShieldCheck className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>15. DNSSEC</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        answered ? statusTone : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {answered ? (enabled ? `SIGNED · ${validationStatus}` : "NOT SIGNED") : dnssecStatus.status}
+                    </span>
+                  </div>
+
+                  {!answered ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {dnssecStatus.status === "ERROR"
+                        ? `DNSSEC status could not be determined: ${(dnssecStatus.error || "the resolver was unreachable.").replace(/\.*$/, ".")}`
+                        : "This target has no DNS zone to inspect for DNSSEC."}
+                    </p>
+                  ) : !enabled ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-neutral-400 font-sans font-light">
+                        The resolver answered without error and published neither DS nor DNSKEY records for this zone.
+                        Responses for this domain are unauthenticated and cannot be verified against a chain of trust.
+                      </p>
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={dnssecEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Summary tiles */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Validation Status</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{validationStatus || "—"}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">DS Records</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{dsRecords.length}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">DNSKEY Records</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {dnskeyRecords.length}
+                            {diagnostics ? ` (${diagnostics.kskCount} KSK / ${diagnostics.zskCount} ZSK)` : ""}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Non-Existence Proof</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {denialEv?.rawData?.denialScheme || "Not detected"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* DS records */}
+                      {dsRecords.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            DS Records (Parent Delegation)
+                          </span>
+                          <table className="w-full text-left border-collapse min-w-[560px]">
+                            <thead>
+                              <tr className="border-b border-neutral-800/80 print:border-neutral-200">
+                                <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Key Tag</th>
+                                <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Signing Algorithm</th>
+                                <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Digest Algorithm</th>
+                                <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2">Digest</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {dsRecords.map((d: any, idx: number) => (
+                                <tr key={`${d.keyTag}-${idx}`} className="border-b border-neutral-900/80 print:border-neutral-100 last:border-0">
+                                  <td className="text-xs text-neutral-200 print:text-black font-mono py-2 pr-3">{d.keyTag}</td>
+                                  <td className="text-xs text-neutral-300 print:text-black font-mono py-2 pr-3">{d.algorithmName}</td>
+                                  <td className="text-xs text-neutral-400 print:text-black font-mono py-2 pr-3">{d.digestTypeName}</td>
+                                  <td className="text-xs text-neutral-500 print:text-black font-mono py-2 break-all">
+                                    {(d.digest || "").slice(0, 32)}…
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* DNSKEY records */}
+                      {dnskeyRecords.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            DNSKEY Records (Zone Keys)
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {dnskeyRecords.map((k: any, idx: number) => (
+                              <span
+                                key={`${k.keyTag}-${idx}`}
+                                className={`text-[10px] font-mono rounded px-2 py-1 border ${
+                                  matchedToDs.includes(k.keyTag)
+                                    ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
+                                    : "text-neutral-300 print:text-black bg-neutral-900/70 border-neutral-800"
+                                }`}
+                              >
+                                {k.role} · tag {k.keyTag} · {k.algorithmName}
+                                {matchedToDs.includes(k.keyTag) ? " ✓" : ""}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-sans font-light mt-2">
+                            A ✓ marks a key whose tag matches a parent DS record — the link in the chain of trust.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={dnssecEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Lookup diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Lookup Time</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.detectionTimeMs}ms</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Resolver</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.resolver}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">AD Flag</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">
+                              {diagnostics.authenticatedData ? "Set" : "Not set"}
+                            </span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Source</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono truncate block">{diagnostics.source}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>15. Strategic Security & Countermeasure Recommendations</span>
+                <span>16. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (

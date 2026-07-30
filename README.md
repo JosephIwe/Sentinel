@@ -174,6 +174,9 @@ The app serves the Vite-powered frontend and the Express API together at `http:/
 | `REVERSE_DNS_TIMEOUT_MS` | No | `4000` | Reverse DNS per-lookup timeout (4 seconds). |
 | `HTTPHEADERS_CACHE_TTL_MS` | No | `1800000` | HTTP security header inspection cache TTL (30 minutes). |
 | `HTTPHEADERS_TIMEOUT_MS` | No | `4000` | HTTP security header per-request timeout (4 seconds). |
+| `DNSSEC_CACHE_TTL_MS` | No | `3600000` | DNSSEC lookup cache TTL (1 hour). |
+| `DNSSEC_TIMEOUT_MS` | No | `4000` | DNSSEC per-query timeout (4 seconds). |
+| `DNSSEC_RESOLVER` | No | system resolver | IP of the recursive resolver to query; its AD flag determines the reported validation status. |
 
 See [`.env.example`](.env.example) and [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, annotated list.
 
