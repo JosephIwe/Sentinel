@@ -2222,12 +2222,170 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* ASN / IP Intelligence Section */}
+          {(() => {
+            const asnStatus = response.connectorStatuses?.find(
+              (s: any) => s.name === "ASN / IP Intelligence"
+            );
+            if (!asnStatus) return null;
+
+            const asnEvidences = (response.evidences || []).filter(ev => ev.id?.startsWith("ev_asn_"));
+            const networksEv = asnEvidences.find(ev => ev.id === "ev_asn_networks");
+            const orgEv = asnEvidences.find(ev => ev.id === "ev_asn_organization");
+            const registryEv = asnEvidences.find(ev => ev.id === "ev_asn_registry");
+            const found = asnStatus.status === "SUCCESS" && !!networksEv;
+            const diagnostics = networksEv?.rawData?.diagnostics;
+            const networks: any[] = networksEv?.rawData?.networks || [];
+            const operators: any[] = orgEv?.rawData?.organizations || [];
+            const registries: string[] = registryEv?.rawData?.registries || [];
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="asn-ip-intelligence-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <Network className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>11. ASN / IP Intelligence</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        found
+                          ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                          : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {found ? `${networksEv?.rawData?.asnCount ?? 0} AUTONOMOUS SYSTEMS` : asnStatus.status}
+                    </span>
+                  </div>
+
+                  {!found ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {asnStatus.status === "ERROR"
+                        ? `ASN / IP intelligence could not be resolved: ${(asnStatus.error || "the lookup service was unreachable.").replace(/\.*$/, ".")}`
+                        : "No BGP origin record is published for the addresses this target resolves to."}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Summary tiles */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Autonomous Systems</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{networksEv?.rawData?.asnCount ?? 0}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Addresses Mapped</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{networksEv?.rawData?.ipCount ?? 0}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Registry</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{registries.join(", ") || "—"}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Network Operator</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono truncate block">
+                            {operators[0]?.organization || "—"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Announced networks */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[560px]">
+                          <thead>
+                            <tr className="border-b border-neutral-800/80 print:border-neutral-200">
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Address</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">ASN</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">CIDR</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Range</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Registry</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2">Country</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {networks.map((n: any, idx: number) => (
+                              <tr key={`${n.ip}-${idx}`} className="border-b border-neutral-900/80 print:border-neutral-100 last:border-0">
+                                <td className="text-xs text-neutral-200 print:text-black font-mono py-2 pr-3">{n.ip}</td>
+                                <td className="text-xs text-neutral-300 print:text-black font-mono py-2 pr-3">AS{n.asn}</td>
+                                <td className="text-xs text-neutral-400 print:text-black font-mono py-2 pr-3">{n.cidr || "—"}</td>
+                                <td className="text-xs text-neutral-400 print:text-black font-mono py-2 pr-3">
+                                  {n.rangeStart && n.rangeEnd ? `${n.rangeStart} – ${n.rangeEnd}` : "—"}
+                                </td>
+                                <td className="text-xs text-neutral-400 print:text-black font-mono py-2 pr-3">{n.registry || "—"}</td>
+                                <td className="text-xs text-neutral-400 print:text-black font-mono py-2">{n.countryCode || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Network operators */}
+                      {operators.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Network Operators (ISP / Hosting Provider)
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {operators.map((o: any, idx: number) => (
+                              <span
+                                key={`${o.asn}-${idx}`}
+                                className="text-[10px] font-mono text-neutral-300 print:text-black bg-neutral-900/70 border border-neutral-800 rounded px-2 py-1"
+                              >
+                                AS{o.asn} · {o.organization}
+                                {o.registeredOn ? ` · ${o.registeredOn}` : ""}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-sans font-light mt-2">
+                            Country codes above reflect the registry allocation record, not the physical location of the host.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={asnEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Lookup diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Lookup Time</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.detectionTimeMs}ms</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Source</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.source}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Addresses Resolved</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.ipsResolved}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Unannounced Addresses</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.ipsWithoutOrigin}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>11. Strategic Security & Countermeasure Recommendations</span>
+                <span>12. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (
