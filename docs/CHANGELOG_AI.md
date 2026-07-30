@@ -6,6 +6,22 @@ Entries prior to 2026-07-28 are reconstructed from git history for continuity, s
 
 ---
 
+## 2026-07-30 — DNSSEC connector merged (PR #17)
+
+**Prompted by**: an explicit instruction to land the already-implemented `feature/dnssec` branch — rebase onto current `main`, renumber only the report section, preserve the implementation byte-for-byte.
+
+The connector itself was written in an earlier session; this entry records the merge. It builds and parses DNS messages directly (RFC 1035 wire format including name-compression pointers, RFC 4034 record formats, EDNS0 DO bit per RFC 6891), because Node's `dns` module cannot request DS, DNSKEY, or NSEC3PARAM and both DoH endpoints are egress-blocked in the dev sandbox. Raw DNS over UDP does work here, so it was verified live end to end.
+
+**Rebase**: four conflicts, all "both sides appended to the same list". `.env.example`, `README.md` and `server.ts` resolved by keeping both sides. `InvestigationReport.tsx` resolved with the procedure recorded in the previous entry — take `main`'s file verbatim, re-insert the DNSSEC block with only its number changed (14 → 15, Recommendations 15 → 16). Verified by diffing the re-inserted block: **exactly two changed lines**, and `src/connectors/dnssec.ts` plus its test file hash-identical before and after.
+
+That makes three consecutive branches resolved this way. The procedure is reliable; hand-splicing git's interleaved hunks is not.
+
+**Kept deliberately**: `DNSSEC_RESOLVER` sends UDP to an operator-specified address and does not go through the SSRF guard, because operators legitimately run internal validating resolvers on private addresses. Raised as a decision item in an earlier session and explicitly kept.
+
+Suite 423 → **456 tests across 29 files**, all passing. Eleven connectors now registered. `ShodanConnector` and `Crawl4AI WebFootprintConnector` are the only v1.1 items left.
+
+---
+
 ## 2026-07-30 — v1.1 connector expansion: five connectors shipped (PRs #11–#15)
 
 **Prompted by**: a run of per-connector specs, each on its own feature branch, with an explicit "do not redesign / do not touch auth, routes, pipeline, Evidence model, ValidationService, HallucinationDetector, ScoringService" constraint.
