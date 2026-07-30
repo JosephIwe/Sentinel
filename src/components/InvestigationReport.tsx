@@ -3348,12 +3348,191 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* Web Footprint Section */}
+          {(() => {
+            const footprintStatus = response.connectorStatuses?.find((s: any) => s.name === "Web Footprint");
+            if (!footprintStatus) return null;
+
+            const fpEvidences = (response.evidences || []).filter(ev => ev.id?.startsWith("ev_footprint_"));
+            const metaEv = fpEvidences.find(ev => ev.id === "ev_footprint_metadata");
+            const resEv = fpEvidences.find(ev => ev.id === "ev_footprint_resources");
+            const formsEv = fpEvidences.find(ev => ev.id === "ev_footprint_forms");
+            const techEv = fpEvidences.find(ev => ev.id === "ev_footprint_technology");
+            const linksEv = fpEvidences.find(ev => ev.id === "ev_footprint_links");
+            const found = footprintStatus.status === "SUCCESS" && fpEvidences.length > 0;
+            const diagnostics =
+              metaEv?.rawData?.diagnostics || resEv?.rawData?.diagnostics || linksEv?.rawData?.diagnostics;
+
+            const counts = resEv?.rawData?.counts || {};
+            const forms: any[] = formsEv?.rawData?.forms || [];
+            const technologies: any[] = techEv?.rawData?.technologies || [];
+            const sameOriginLinks = linksEv?.rawData?.sameOriginLinks ?? resEv?.rawData?.sameOriginLinks ?? 0;
+            const notConfigured =
+              footprintStatus.status === "NO_DATA" && /not configured/i.test(footprintStatus.error || "");
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="web-footprint-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <Globe className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>17. Web Footprint</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        found
+                          ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                          : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {found
+                        ? `${diagnostics?.resourcesObserved ?? 0} RESOURCES`
+                        : notConfigured
+                        ? "NOT CONFIGURED"
+                        : footprintStatus.status}
+                    </span>
+                  </div>
+
+                  {!found ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {footprintStatus.status === "ERROR"
+                        ? `The web footprint crawl could not be completed: ${(footprintStatus.error || "the crawler was unreachable.").replace(/\.*$/, ".")}`
+                        : notConfigured
+                        ? "Web Footprint is not configured (CRAWL4AI_URL is unset), so no crawl was performed. This says nothing about the target's actual web footprint."
+                        : (footprintStatus.error || "No reportable web footprint was observed for this target.").replace(/\.*$/, ".")}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Page identity */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg sm:col-span-2">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Page Title</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono block truncate">
+                            {metaEv?.rawData?.title || "—"}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Language</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {metaEv?.rawData?.language || "—"}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg sm:col-span-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Canonical URL</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono block break-all">
+                            {metaEv?.rawData?.canonicalUrl || "—"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Footprint counts */}
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {[
+                          { label: "Same-Origin Links", value: sameOriginLinks },
+                          { label: "Scripts", value: counts.scripts ?? 0 },
+                          { label: "Stylesheets", value: counts.stylesheets ?? 0 },
+                          { label: "Images", value: counts.images ?? 0 },
+                          { label: "Forms", value: forms.length },
+                          { label: "iframes", value: counts.iframes ?? 0 }
+                        ].map(tile => (
+                          <div key={tile.label} className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">{tile.label}</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{tile.value}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Technology indicators */}
+                      {technologies.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Observable Technology Indicators
+                          </span>
+                          <div className="space-y-1">
+                            {technologies.map((t: any, idx: number) => (
+                              <div key={`${t.indicator}-${idx}`} className="flex flex-wrap items-baseline gap-x-2 text-[10px] font-mono">
+                                <span className="text-neutral-200 print:text-black">{t.indicator}</span>
+                                <span className="text-neutral-500">{t.source}</span>
+                                <code className="text-neutral-600 break-all">{t.evidenceValue}</code>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-sans font-light mt-2">
+                            Read directly from the crawled markup. The Technology Fingerprinting section remains the authority on technology detection.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Forms */}
+                      {forms.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Forms Present
+                          </span>
+                          <div className="space-y-1">
+                            {forms.map((f: any, idx: number) => (
+                              <div key={idx} className="flex flex-wrap items-baseline gap-x-2 text-[10px] font-mono">
+                                <span className="text-neutral-200 print:text-black">{(f.method || "get").toUpperCase()}</span>
+                                <span className="text-neutral-400 break-all">{f.action || "(current URL)"}</span>
+                                <span className="text-neutral-500">
+                                  {f.inputCount} input{f.inputCount === 1 ? "" : "s"}
+                                  {f.inputTypes?.length ? ` · ${f.inputTypes.join(", ")}` : ""}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-sans font-light mt-2">
+                            Structure only — no form was submitted and no field value was read.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={fpEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Crawl diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          {[
+                            { label: "Crawl Duration", value: `${diagnostics.detectionTimeMs}ms` },
+                            { label: "HTTP Status", value: diagnostics.httpStatus ?? "—" },
+                            { label: "Pages Crawled", value: `${diagnostics.pagesCrawled} (depth ${diagnostics.maxDepth})` },
+                            { label: "Resources Observed", value: diagnostics.resourcesObserved ?? 0 },
+                            { label: "robots.txt", value: diagnostics.robotsAllowed ? "Permitted" : "Not permitted" },
+                            { label: "Source", value: diagnostics.source }
+                          ].map(tile => (
+                            <div key={tile.label} className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                              <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">{tile.label}</span>
+                              <span className="text-xs text-neutral-200 print:text-black font-mono block truncate">{tile.value}</span>
+                            </div>
+                          ))}
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg sm:col-span-3">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Final URL</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono block break-all">{diagnostics.finalUrl}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>17. Strategic Security & Countermeasure Recommendations</span>
+                <span>18. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (

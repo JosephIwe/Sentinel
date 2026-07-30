@@ -18,6 +18,26 @@ see `CHANGELOG.md` for the history of each addition.
 | HTTP Security Headers | Beta | TBD | TBD | 0 | Low |
 | DNSSEC | Beta | TBD | TBD | 0 | Low |
 | Shodan Intelligence | Beta | TBD | TBD | 0 | Medium |
+| Web Footprint (Crawl4AI) | Beta (unmerged) | TBD | TBD | 0 | Medium |
+
+**Web Footprint — scope limits and safety posture**
+
+Implemented 2026-07-30 on `feature/crawl4ai-web-footprint`. Crawl4AI is integrated as an **HTTP service**, never a library, and never
+falls back to a second crawler when unconfigured.
+
+| Limit | Value | Enforced |
+|---|---|---|
+| Crawl depth | 0 | Sent to the service *and* only the first result is read |
+| Pages crawled | 1 | Same |
+| Links followed | 0 | Counted only; asserted by test |
+| External fetches | 0 | `exclude_external_links`, asserted by test |
+| Subdomain expansion | none | Not implemented |
+| Vulnerability claims | none | Asserted by test |
+
+Because the service performs the fetch, the target is proven public with `assertPublicHostname` *before* being handed over, and the
+final URL is re-checked afterwards so a redirect into private space is discarded rather than reported. `CRAWL4AI_URL` is operator
+infrastructure config (typically a private sidecar) and is reached with a plain fetch after http/https validation — it is never
+derived from investigation input.
 
 **HTTP Security Headers — classification and confidence tiers**
 

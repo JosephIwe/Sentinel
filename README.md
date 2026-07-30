@@ -180,6 +180,9 @@ The app serves the Vite-powered frontend and the Express API together at `http:/
 | `SHODAN_API_KEY` | No | _(unset)_ | Shodan host API key. Without it the Shodan connector returns `NO_DATA` with a "not configured" diagnostic and makes no request. |
 | `SHODAN_CACHE_TTL_MS` | No | `3600000` | Shodan host lookup cache TTL (1 hour). |
 | `SHODAN_TIMEOUT_MS` | No | `4000` | Shodan API per-request timeout (4 seconds). |
+| `CRAWL4AI_URL` | No | _(unset)_ | Base URL of the Crawl4AI service. Without it the Web Footprint connector returns `NO_DATA` with a "not configured" diagnostic and performs no crawl. |
+| `CRAWL4AI_CACHE_TTL_MS` | No | `1800000` | Web footprint crawl cache TTL (30 minutes). |
+| `CRAWL4AI_TIMEOUT_MS` | No | `4000` | Crawl4AI service and robots.txt per-request timeout (4 seconds). |
 
 See [`.env.example`](.env.example) and [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, annotated list.
 

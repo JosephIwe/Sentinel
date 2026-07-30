@@ -16,6 +16,7 @@ import { ReverseDnsConnector } from "./src/connectors/reverseDns";
 import { HttpSecurityHeadersConnector } from "./src/connectors/httpSecurityHeaders";
 import { DnssecConnector } from "./src/connectors/dnssec";
 import { ShodanConnector } from "./src/connectors/shodan";
+import { Crawl4AiWebFootprintConnector } from "./src/connectors/crawl4aiWebFootprint";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
 import { InvestigationWorker } from "./src/services/investigationWorker";
@@ -665,6 +666,7 @@ const reverseDnsConnector = new ReverseDnsConnector();
 const httpSecurityHeadersConnector = new HttpSecurityHeadersConnector();
 const dnssecConnector = new DnssecConnector();
 const shodanConnector = new ShodanConnector();
+const webFootprintConnector = new Crawl4AiWebFootprintConnector();
 
 const investigationService = new InvestigationService([
   whoisConnector,
@@ -679,6 +681,7 @@ const investigationService = new InvestigationService([
   httpSecurityHeadersConnector,
   dnssecConnector,
   shodanConnector,
+  webFootprintConnector,
 ]);
 
 // Seed in-memory list tracking successful multi-source intelligence reports.
