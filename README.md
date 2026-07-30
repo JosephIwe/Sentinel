@@ -177,6 +177,9 @@ The app serves the Vite-powered frontend and the Express API together at `http:/
 | `DNSSEC_CACHE_TTL_MS` | No | `3600000` | DNSSEC lookup cache TTL (1 hour). |
 | `DNSSEC_TIMEOUT_MS` | No | `4000` | DNSSEC per-query timeout (4 seconds). |
 | `DNSSEC_RESOLVER` | No | system resolver | IP of the recursive resolver to query; its AD flag determines the reported validation status. |
+| `SHODAN_API_KEY` | No | _(unset)_ | Shodan host API key. Without it the Shodan connector returns `NO_DATA` with a "not configured" diagnostic and makes no request. |
+| `SHODAN_CACHE_TTL_MS` | No | `3600000` | Shodan host lookup cache TTL (1 hour). |
+| `SHODAN_TIMEOUT_MS` | No | `4000` | Shodan API per-request timeout (4 seconds). |
 
 See [`.env.example`](.env.example) and [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, annotated list.
 
