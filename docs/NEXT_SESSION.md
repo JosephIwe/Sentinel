@@ -1,20 +1,32 @@
 # Next Session
 
-_Written 2026-07-28, after expanding the `TechnologyFingerprintConnector` to full spec on branch `feature/technology-fingerprinting`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
+_Written 2026-07-30, after merging the HTTP Security Headers connector (PR #15) into `main` at `14ae921`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
 
 ## Where things stand
 
-Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion has begun**. The first of the four planned connectors — `TechnologyFingerprintConnector` (`src/connectors/technologyFingerprint.ts`) — is shipped as Beta, registered in the live pipeline, and surfaced in the investigation report as section 9 with expandable evidence and detection diagnostics.
+Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion is well advanced**. Ten connectors are registered in the live pipeline; five shipped on 2026-07-29/30 as PRs #11–#15 (Certificate Transparency, ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers). See `docs/ROADMAP.md` for what each one does and its known limitations.
 
-Suite is at **269 tests, all passing**; lint clean; build succeeds; 0 `npm audit` findings.
+Suite is at **423 tests across 28 files, all passing**; `tsc --noEmit` clean; `npm run build` succeeds.
 
-**Uncommitted-scope note**: the connector work lives on branch `feature/technology-fingerprinting`, not the usual `claude/*` branch. `docs/PROJECT_OVERVIEW.md` still references the connector's pre-rename filename (`techfingerprint.ts` → now `technologyFingerprint.ts`) because that file was outside the session's explicit "update only" documentation list — a one-line fix for whoever picks this up.
+## Highest-priority task: merge `feature/dnssec`
 
-## Highest-priority task: `CertificateTransparencyConnector`
+The DNSSEC connector is **already implemented, tested (33 tests) and live-verified** on branch `feature/dnssec` — it is not new work, it is an unmerged branch. It is the only thing standing between the current state and a complete DNS-layer picture.
 
-The second of the four v1.1 connectors per `docs/ROADMAP.md`. It queries Certificate Transparency logs (e.g. crt.sh) for certificates issued to the target domain — surfacing subdomains, issuance history, and issuing CAs.
+Before merging it needs one mechanical fix, and nothing else:
 
-**Follow `docs/CONNECTOR_RELEASE_CHECKLIST.md` exactly.** `src/connectors/technologyFingerprint.ts` is the freshest reference implementation and the closest structural match (single outbound HTTP call, same status semantics, same caching/timeout pattern).
+1. Rebase `feature/dnssec` onto current `main`. Expect conflicts in `.env.example`, `README.md`, `server.ts` and `src/components/InvestigationReport.tsx` — all "both sides appended to the same list", all resolved by keeping both sides.
+2. For `InvestigationReport.tsx`, do **not** hand-splice the interleaved hunks. Take `main`'s file verbatim, then re-insert the DNSSEC section block from the pre-rebase commit with only its number changed. `main` currently ends at section 14 (HTTP Security Headers) with Recommendations at 15, so DNSSEC becomes **15** and Recommendations moves to **16**.
+3. Verify by diffing the re-inserted block against the original — it must show exactly two changed lines (the section number).
+4. Confirm `src/connectors/dnssec.ts` and its test file are byte-identical before and after the rebase.
+5. Run the DNSSEC + server tests, `tsc --noEmit`, `npm run build`, then open and merge the PR.
+
+**Do not change the DNSSEC implementation during the rebase, and keep `DNSSEC_RESOLVER` support exactly as it is** — it was reviewed and deliberately kept. Note that it sends UDP to an operator-specified address and intentionally bypasses the SSRF guard, because operators legitimately run internal validating resolvers on private addresses.
+
+## After DNSSEC: remaining v1.1 connectors
+
+`ShodanConnector` and `Crawl4AI WebFootprintConnector` are the last two on the v1.1 list. Shodan needs an API key, so confirm credential handling before starting it.
+
+**Follow `docs/CONNECTOR_RELEASE_CHECKLIST.md` exactly.** `src/connectors/httpSecurityHeaders.ts` is the freshest reference implementation (single outbound HTTPS call through `safeFetch`, same status semantics, same caching/timeout pattern, diagnostics attached per-evidence).
 
 **Non-negotiables, learned the hard way on this project:**
 - Query a **real external source**; never synthesize evidence. `NO_DATA` and `ERROR` are correct outcomes.
@@ -23,8 +35,15 @@ The second of the four v1.1 connectors per `docs/ROADMAP.md`. It queries Certifi
 - A failure to reach the source is `ERROR` — never a false "nothing found".
 - Set the connector's internal timeout *below* the orchestrator's 5000ms default so its own descriptive error surfaces rather than a generic outer TIMEOUT.
 - Emit a specific entity `type`, never `Generic` (which is eligible for the entity resolver's cross-type wildcard match).
+- Attach diagnostics to **each evidence's `rawData`**, not the connector result's — the pipeline aggregates evidence but drops connector-level `rawData`.
 
-**Testing gotcha that will bite you**: `InvestigationService` keeps *static* full-investigation and per-connector caches that outlive service instances. Integration tests must use a **distinct hostname per test**, or later tests silently receive earlier tests' cached results. See the note at the top of `tests/technologyFingerprint-integration.test.ts`.
+**Two testing gotchas that will bite you**: `InvestigationService` keeps *static* full-investigation and per-connector caches that outlive service instances, so integration tests need a **distinct hostname per test**. Connectors keep their own static result caches too — clear them in `beforeEach` rather than juggling unique inputs.
+
+**Report section numbering**: every new connector branch cut from the same `main` will collide with any sibling branch on its section number. Merge one, then renumber the other — see the 2026-07-30 entry in `docs/CHANGELOG_AI.md` for the procedure that works.
+
+## Known intentional overlap — do not "fix" without a task
+
+Technology Fingerprinting and HTTP Security Headers both touch HSTS, CSP, Referrer-Policy and Permissions-Policy. This is **by design**: Technology Fingerprinting does technology/signature detection (presence as a signal), HTTP Security Headers does security-control analysis and header-value interpretation. Do not remove headers from Technology Fingerprinting unless a separate cleanup task is created for it.
 
 ## Alternative parallel track: Milestone 3 — Test Coverage & Quality Hardening
 

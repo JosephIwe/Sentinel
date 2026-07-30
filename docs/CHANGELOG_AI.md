@@ -6,6 +6,39 @@ Entries prior to 2026-07-28 are reconstructed from git history for continuity, s
 
 ---
 
+## 2026-07-30 — v1.1 connector expansion: five connectors shipped (PRs #11–#15)
+
+**Prompted by**: a run of per-connector specs, each on its own feature branch, with an explicit "do not redesign / do not touch auth, routes, pipeline, Evidence model, ValidationService, HallucinationDetector, ScoringService" constraint.
+
+**Shipped and merged into `main`**, one PR each, in order:
+
+| PR | Connector | Source | Tests | Report |
+|---|---|---|---|---|
+| #11 | Certificate Transparency | crt.sh JSON API | 21 | §10 |
+| #12 | ASN / IP Intelligence | Team Cymru IP-to-ASN (DNS) | 30 | §11 |
+| #13 | RDAP Intelligence | IANA bootstrap (RFC 7484) + RDAP (RFC 9083) | 34 | §12 |
+| #14 | Reverse DNS | System resolver PTR + forward confirmation | 31 | §13 |
+| #15 | HTTP Security Headers | HTTPS response headers | 38 | §14 |
+
+Suite went 269 → **423 tests across 28 files**, all passing. Ten connectors are now registered in the live pipeline.
+
+**Recurring pattern worth remembering**: every one of these branches was cut from a `main` that ended at the previous connector's section number, so each collided with the next branch on the report's section numbering (two branches both claiming section *N*, both renumbering Recommendations to *N+1*). The resolution that worked, twice, was: merge the first branch, then rebuild the second branch's report file by taking `main`'s version verbatim and re-inserting the new section block with **only** its number changed — verified by diffing the block and asserting exactly two changed lines. Hand-splicing git's interleaved conflict hunks was tried first and is not worth it.
+
+**Grounding decisions made under the "never fabricate" invariant**:
+- Certificate Transparency reports **no fingerprints**, because crt.sh's JSON API does not expose them; serial numbers and crt.sh entry IDs are surfaced instead.
+- ASN reports the registry country as an *allocation record*, explicitly not a geolocation.
+- Reverse DNS reports unconfirmed PTR records as observed-but-uncorroborated rather than dropping them, and a failed forward lookup counts as unconfirmed, never confirmed.
+- DNSSEC treats SERVFAIL as explicitly *inconclusive* — it can mean a failed validation or an ordinary outage, and claiming the former would overstate the observation.
+- HTTP Security Headers reports headers from error responses (403/500) with the status recorded alongside them, since those are still the headers the server sent.
+
+**Environment limitations hit** (reported, not worked around): crt.sh and every RDAP host (`data.iana.org`, `rdap.org`, `rdap.verisign.com`, …) are egress-blocked in the dev sandbox, so those two connectors' SUCCESS/NO_DATA paths are unit-tested only; their ERROR paths were verified live. DNS-based connectors (ASN, Reverse DNS, DNSSEC) and HTTPS fetches to reachable hosts were verified live end to end.
+
+**Verified in-browser** for HTTP Security Headers: a real `github.com` investigation driven through the SPA, confirming the section renders once, present/absent headers and observations display correctly, all four evidences expand, diagnostics are populated, and every prior section still renders (headings 1–15 in sequence).
+
+**Not done, deliberately**: `feature/dnssec` is implemented and green but left unmerged — it needs its section renumbered to 15 first. Technology Fingerprinting was left untouched despite overlapping on four security headers; the overlap is recorded as intentional in `docs/ROADMAP.md` and `docs/CONNECTOR_SCORECARD.md`.
+
+---
+
 ## 2026-07-28 — Technology Fingerprinting: expansion to full spec (branch `feature/technology-fingerprinting`)
 
 **Prompted by**: a detailed spec for a Technology Fingerprinting connector — detection surfaces, technology list, report section, diagnostics, test matrix, and a dedicated feature branch.
