@@ -1073,8 +1073,12 @@ async function startServer() {
 }
 
 // Skip the real listener/Vite dev server bootstrap when this module is
-// imported under test (Vitest sets NODE_ENV=test by default), so tests can
-// import `app` and drive it directly with supertest.
-if (process.env.NODE_ENV !== "test") {
+// imported rather than run as a server:
+//   - under test (Vitest sets NODE_ENV=test), so tests can import `app` and
+//     drive it directly with supertest;
+//   - on Vercel (`VERCEL` is set in its build and runtime), where the
+//     serverless runtime owns the listener and `api/index.ts` re-exports this
+//     same app. Calling app.listen() there would bind a port nothing routes to.
+if (process.env.NODE_ENV !== "test" && !process.env.VERCEL) {
   startServer();
 }

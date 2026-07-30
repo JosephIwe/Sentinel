@@ -36,6 +36,26 @@ interface PlaygroundViewProps {
   onClearInitialResult?: () => void;
 }
 
+/**
+ * Extracts a displayable message from an API error payload.
+ *
+ * `error` is normally a string from this API, but a platform-level response
+ * (a Vercel routing error, a proxy, a gateway) nests an object under the same
+ * key: `{ error: { code, message } }`. Passing that object straight to
+ * `new Error()` or into JSX renders the literal text "[object Object]", which
+ * hides the real cause. Prefer a nested `message`, fall back to the supplied
+ * default, and never render a raw object.
+ */
+function extractErrorMessage(payload: any, fallback: string): string {
+  const raw = payload?.error ?? payload?.message;
+  if (typeof raw === "string" && raw.trim()) return raw;
+  if (raw && typeof raw === "object") {
+    const nested = (raw as any).message ?? (raw as any).code;
+    if (typeof nested === "string" && nested.trim()) return nested;
+  }
+  return fallback;
+}
+
 export default function PlaygroundView({ initialResult, onClearInitialResult }: PlaygroundViewProps = {}) {
   // Investigate Panel States
   const [type, setType] = useState<string>("domain");
@@ -118,9 +138,11 @@ export default function PlaygroundView({ initialResult, onClearInitialResult }: 
         })
       });
 
-      const startData = await res.json();
+      const startData = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(startData.error || `Orchestration service returned HTTP status ${res.status}`);
+        throw new Error(
+          extractErrorMessage(startData, `Orchestration service returned HTTP status ${res.status}`)
+        );
       }
 
       const jobId = startData.jobId;
@@ -162,7 +184,7 @@ export default function PlaygroundView({ initialResult, onClearInitialResult }: 
             setIsInvestigating(false);
           } else if (jobData.status === "failed") {
             clearInterval(pollInterval);
-            setError(jobData.error || "Background investigation job failed.");
+            setError(extractErrorMessage(jobData, "Background investigation job failed."));
             setIsInvestigating(false);
           } else if (jobData.status === "cancelled") {
             clearInterval(pollInterval);
