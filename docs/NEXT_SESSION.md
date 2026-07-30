@@ -1,18 +1,25 @@
 # Next Session
 
-_Written 2026-07-30, after merging the DNSSEC connector (PR #17) into `main` at `ce6fd78`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
+_Written 2026-07-30, after merging the Shodan Intelligence connector (PR #19) into `main` at `0045c55`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
 
 ## Where things stand
 
-Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion is well advanced**. Eleven connectors are registered in the live pipeline; six shipped on 2026-07-29/30 as PRs #11–#15 and #17 (Certificate Transparency, ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers, DNSSEC). See `docs/ROADMAP.md` for what each one does and its known limitations.
+Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion is well advanced**. Twelve connectors are registered in the live pipeline; seven shipped on 2026-07-29/30 as PRs #11–#15, #17 and #19 (Certificate Transparency, ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers, DNSSEC, Shodan Intelligence). See `docs/ROADMAP.md` for what each one does and its known limitations.
 
-Suite is at **456 tests across 29 files, all passing**; `tsc --noEmit` clean; `npm run build` succeeds.
+Suite is at **497 tests across 30 files, all passing**; `tsc --noEmit` clean; `npm run build` succeeds.
 
-## Highest-priority task: `ShodanConnector`
+## Highest-priority task: `Crawl4AI WebFootprintConnector`
 
-DNSSEC merged 2026-07-30 (PR #17). **All six planned DNS/PKI/HTTP-layer connectors are done**; `ShodanConnector` and `Crawl4AI WebFootprintConnector` are the last two on the v1.1 list.
+Shodan merged 2026-07-30 (PR #19). It is **the last remaining item on the v1.1 connector list** — after it, v1.1 connector expansion is complete and attention returns to Milestone 3 (test coverage and quality hardening).
 
-Shodan is the recommended next one — it is the higher-value of the two and the closest structural match to what already exists (single authenticated HTTP call, same status semantics). **Confirm credential handling before starting**: it needs an API key, which none of the existing connectors require, so decide how the key is configured and what the connector does when it is absent (almost certainly `NO_DATA` with an explanatory info string, never a fabricated result).
+Decisions to settle before writing code, because they shape the whole connector:
+
+- **What it actually collects.** "Web footprint" is broad. Scope it to what can be observed and pointed at in a fetched page — discovered links, referenced third-party origins, forms and their action targets, social/contact handles present in markup, and so on. Anything requiring judgement about *significance* is out.
+- **Crawl depth.** A crawler is the first connector that can issue many requests per target. Decide the page cap and depth up front, enforce it hard, and record both in diagnostics. Single-page (homepage only) is a defensible v1.
+- **Whether Crawl4AI is a dependency or an HTTP service.** If it is a service, it needs configuration and the same not-configured handling as Shodan. If it is a library, check its transitive dependency weight before adding it.
+- **robots.txt.** Decide and document the policy explicitly rather than leaving it implicit.
+
+Every fetch must go through `src/utils/ssrfGuard.ts`'s `safeFetch`, which already re-validates each redirect hop.
 
 ## Connector-authoring reference
 
