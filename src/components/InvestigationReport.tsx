@@ -2042,12 +2042,192 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* Certificate Transparency Section */}
+          {(() => {
+            const ctStatus = response.connectorStatuses?.find(
+              (s: any) => s.name === "Certificate Transparency Resolver"
+            );
+            if (!ctStatus) return null;
+
+            const ctEvidences = (response.evidences || []).filter(ev => ev.id?.startsWith("ev_ct_"));
+            const certsEv = ctEvidences.find(ev => ev.id === "ev_ct_certificates");
+            const issuersEv = ctEvidences.find(ev => ev.id === "ev_ct_issuers");
+            const subdomainsEv = ctEvidences.find(ev => ev.id === "ev_ct_subdomains");
+            const validityEv = ctEvidences.find(ev => ev.id === "ev_ct_validity");
+            const found = ctStatus.status === "SUCCESS" && !!certsEv;
+            const diagnostics = certsEv?.rawData?.diagnostics;
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="certificate-transparency-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <Lock className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>10. Certificate Transparency</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        found
+                          ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                          : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {found ? `${certsEv?.rawData?.certificateCount ?? 0} CERTIFICATES` : ctStatus.status}
+                    </span>
+                  </div>
+
+                  {!found ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {ctStatus.status === "ERROR"
+                        ? `Certificate Transparency logs could not be queried: ${(ctStatus.error || "the source was unreachable.").replace(/\.*$/, ".")}`
+                        : "Certificate Transparency logs hold no certificate records for this target."}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Summary tiles */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Certificates</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {certsEv?.rawData?.certificateCount ?? 0}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Issuers</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {issuersEv?.rawData?.issuers?.length ?? 0}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Subdomains</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {subdomainsEv?.rawData?.subdomainCount ?? 0}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-3 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-1">Active / Expired</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {validityEv?.rawData?.activeCertificates ?? 0} / {validityEv?.rawData?.expiredCertificates ?? 0}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Certificate table */}
+                      {Array.isArray(certsEv?.rawData?.certificates) && certsEv.rawData.certificates.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="border-b border-neutral-800/80 print:border-neutral-300 text-[9px] font-mono text-neutral-500 uppercase tracking-widest">
+                                <th className="py-2 pr-3 font-bold">Common Name</th>
+                                <th className="py-2 pr-3 font-bold">Issuer</th>
+                                <th className="py-2 pr-3 font-bold">Valid Until</th>
+                                <th className="py-2 font-bold">Serial</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-neutral-800/50 print:divide-neutral-200">
+                              {certsEv.rawData.certificates.slice(0, 10).map((cert: any, i: number) => (
+                                <tr key={cert.crtShId ?? i} className="align-top">
+                                  <td className="py-2.5 pr-3">
+                                    <span className="text-xs text-neutral-100 print:text-black break-all">
+                                      {cert.commonName || "—"}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 pr-3">
+                                    <span className="text-[10px] font-mono text-neutral-400 print:text-neutral-700 break-all">
+                                      {cert.issuer || "—"}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 pr-3">
+                                    <span className={`text-[10px] font-mono ${cert.isExpired ? "text-amber-400" : "text-neutral-300"} print:text-black`}>
+                                      {cert.notAfter || "—"}{cert.isExpired ? " (expired)" : ""}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5">
+                                    <span className="text-[10px] font-mono text-neutral-500 break-all">
+                                      {cert.serialNumber || "—"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {certsEv.rawData.certificatesSampled && (
+                            <p className="text-[10px] text-neutral-500 font-mono mt-2">
+                              Showing the first {Math.min(10, certsEv.rawData.certificates.length)} of {certsEv.rawData.certificateCount} certificates.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Discovered subdomains */}
+                      {Array.isArray(subdomainsEv?.rawData?.subdomains) && subdomainsEv.rawData.subdomains.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Subdomains Disclosed by Certificate SANs
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {subdomainsEv.rawData.subdomains.slice(0, 40).map((sub: string) => (
+                              <span
+                                key={sub}
+                                className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-800 print:bg-neutral-100 print:border-neutral-300 text-neutral-300 print:text-black rounded break-all"
+                              >
+                                {sub}
+                              </span>
+                            ))}
+                          </div>
+                          {subdomainsEv.rawData.subdomains.length > 40 && (
+                            <p className="text-[10px] text-neutral-500 font-mono mt-2">
+                              +{subdomainsEv.rawData.subdomains.length - 40} more.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={ctEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Lookup diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Lookup Time</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.detectionTimeMs}ms</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Source</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.source}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Records Returned</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.totalRecordsReturned}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Unrelated Names Rejected</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.namesRejectedAsUnrelated}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>10. Strategic Security & Countermeasure Recommendations</span>
+                <span>11. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (
