@@ -31,6 +31,8 @@ The application is configured dynamically using environment variables. Below is 
 - `GITHUB_CACHE_TTL_MS`: Cache duration (in milliseconds) for GitHub intelligence scans. Defaults to `3600000` (1 hour).
 - `INVESTIGATION_CACHE_TTL_MS`: Cache duration (in milliseconds) for aggregated intelligence jobs. Defaults to `300000` (5 minutes).
 - `SECURITYTXT_CACHE_TTL_MS`: Cache duration (in milliseconds) for security.txt (RFC 9116) lookups. Defaults to `1800000` (30 minutes).
+- `TECHFINGERPRINT_CACHE_TTL_MS`: Cache duration (in milliseconds) for technology fingerprint lookups. Defaults to `1800000` (30 minutes).
+- `TECHFINGERPRINT_TIMEOUT_MS`: Per-request timeout (in milliseconds) for the technology fingerprint homepage fetch. Defaults to `4000` (4 seconds).
 - `APP_ACCESS_CODE`: When set, gates the web UI behind a one-time shared access code (signed HttpOnly cookie, ~30 day lifetime). Does not apply to `/api/*` requests. Leave unset to disable the gate entirely. See `utils/betaGate.ts`.
 
 ---

@@ -6,6 +6,63 @@ Entries prior to 2026-07-28 are reconstructed from git history for continuity, s
 
 ---
 
+## 2026-07-28 — Technology Fingerprinting: expansion to full spec (branch `feature/technology-fingerprinting`)
+
+**Prompted by**: a detailed spec for a Technology Fingerprinting connector — detection surfaces, technology list, report section, diagnostics, test matrix, and a dedicated feature branch.
+
+**Important context**: a Technology Fingerprinting connector **already existed** from the immediately preceding session (`src/connectors/techfingerprint.ts`, registered in the pipeline, 16 tests). Creating a second one at the spec's requested path would have produced exactly the duplicate/dead-code problem this project treats as a defect. Instead the existing connector was **renamed** (`git mv`) to the requested `src/connectors/technologyFingerprint.ts` and extended to cover the parts of the spec it did not yet meet. Tests were renamed to match. This was flagged to the user in the response rather than done silently.
+
+**Gap analysis performed before writing code** (existing → required):
+- Already covered: Server/X-Powered-By/X-Generator headers, vendor CDN headers, `<meta generator>`, HTML markers, cookies, SUCCESS/NO_DATA/ERROR, evidence shape, Cloudflare/Fastly/Akamai/Vercel/Netlify/nginx/Apache/IIS/Caddy/Next/Nuxt/Angular/WordPress/Drupal/Joomla.
+- Missing and added: AWS, Azure, Google Cloud, React, Vue, Svelte, Astro, Ghost, Google Analytics, Google Tag Manager, Plausible; security headers (HSTS, CSP, Referrer-Policy, Permissions-Policy, plus X-Content-Type-Options and X-Frame-Options); script-URL and CSS-URL inspection; per-run diagnostics; the report section.
+
+**Design decisions**:
+- **Asset-URL inspection is the primary false-positive defence.** `<script src>` and `<link rel=stylesheet href>` URLs are parsed out and signatures matched against *that list*, not the raw document. A page whose prose says "we migrated from WordPress to Drupal and use Google Analytics and React" therefore yields `NO_DATA` — there is an explicit test asserting exactly this. Framework bundle patterns additionally require a real filename shape, so `?ref=we-love-react-and-vue` in a query string does not match.
+- **Security headers get the *highest* confidence (95)**, above self-identification. For every other signal, the header is a proxy for an underlying technology and could in principle mislead; for `Strict-Transport-Security`, the header's presence *is* the fact being reported. Their values are recorded (unlike vendor trace IDs) because the policy in force is the meaningful content.
+- **`<link rel>` is checked before treating an href as a stylesheet**, so `rel="preconnect"` hints are not mistaken for CSS assets — covered by a test.
+- **Diagnostics are attached to each finding's `rawData`, not the connector result's.** This is a deliberate workaround, not an oversight: the pipeline aggregates connector *evidence* into the final `InvestigationResult` but drops connector-level `rawData`, and the spec forbade modifying the investigation pipeline. Attaching diagnostics per-finding was the only way to surface detection time/method/count in the report without touching forbidden code. It costs a small duplication across findings. Caught during implementation — the first version of the report section read `rawData.diagnostics` from a place the data never reached, which type-checked fine and would have silently rendered nothing.
+- **Report section reads from the evidence list**, filtering `ev_techfp_*`, so the table can never disagree with the evidence it cites. Inserted as section 9; "Recommendations" renumbered 9 → 10.
+
+**Verification**: 269/269 tests (was 256 — 13 added), lint clean, build succeeds. The report section was verified *in a real browser* against a live investigation of `github.com`, not just type-checked: the table rendered 6 technologies with category/confidence/detected-via, the `EvidenceViewer` expansion was clicked and confirmed to reveal the raw matched value, and the diagnostics tiles showed 140ms / 6 technologies / `header, security-header`. Screenshot reviewed.
+
+**Sample real output** — `pypi.org` → SUCCESS, 41ms, 7 technologies: Gunicorn (90, `header:server`), HSTS/CSP/Referrer-Policy/Permissions-Policy/X-Content-Type-Options/X-Frame-Options (95 each). `registry.npmjs.org` → Cloudflare at 93 (90 + corroboration from `server` and `cf-ray`).
+
+**Not done, deliberately**: the spec's "update only" list excluded `docs/PROJECT_OVERVIEW.md`, which still references the pre-rename filename `techfingerprint.ts`. Left stale rather than silently exceeding the stated documentation scope; flagged in the response for a follow-up.
+
+---
+
+## 2026-07-28 — v1.1 connector expansion: TechnologyFingerprintConnector (implementation)
+
+**Prompted by**: user instruction to begin implementing the Technology Fingerprinting connector, the first of the four planned v1.1 connectors.
+
+**Design decisions, made before writing code**:
+- **Data sources = only what one HTTPS GET makes directly observable**: response headers (`Server`, `X-Powered-By`, `X-Generator`, vendor-proprietary headers), `Set-Cookie` *names*, the `<meta name="generator">` tag, and a small set of unambiguous markup/asset-path markers. Nothing inferred beyond a literal match. This is the project's core anti-fabrication invariant applied to a category of connector that is unusually tempting to fake — a "technology detector" could trivially emit plausible-sounding guesses, which is exactly what got three connectors deleted in July.
+- **Every detection is auditable**: each records `matchedOn` (e.g. `header:server`) and the literal `matchedValue` observed, so an analyst can independently re-verify against the raw response. Versions are extracted only when they literally follow the product token (`nginx/1.18.0`, `WordPress 6.4.2`) — never guessed, and the field is simply absent otherwise.
+- **Confidence tiers reflect evidence strength**: direct self-identification (Server/X-Powered-By/meta generator) 90; vendor-proprietary headers 85; distinctive HTML markers 78; session-cookie conventions 70 (weakest — cookie names are customizable). Independent corroboration adds a small capped boost (+3 per extra source, max 95), since two independent signals genuinely are stronger evidence than one.
+- **Cookie values are never recorded** — only names are inspected and stored, since values can carry session material. Vendor headers store only "header present", since their values are trace IDs. Both are covered by explicit tests.
+- **Status semantics mirror `SecurityTxtConnector`**: SUCCESS = fetched and ≥1 signature matched; NO_DATA = fetched cleanly but nothing matched (genuine absence of *detectable* tech) or non-domain target skipped; ERROR = any failure to reach the host (DNS/network/SSRF/timeout/non-2xx). A fetch failure is never reported as "no technologies found".
+- **Entity types**: emits `Technology` entities deliberately rather than `Generic`, because `Generic` is eligible for the entity resolver's known cross-type wildcard match. The `Domain` entity uses the same `type`+`name` canonical key as the DNS connector's, so the two merge into one graph node instead of duplicating — verified by an integration test.
+- **Zero changes to `investigation.ts`**: the connector is self-contained (own cache TTL, own timeout). Its timeout defaults to 4000ms, deliberately *below* the orchestrator's 5000ms per-connector default, so its own descriptive ERROR wins the race rather than surfacing as a generic outer TIMEOUT.
+
+**Did**: implemented `src/connectors/techfingerprint.ts`; added `tests/techfingerprint-connector.test.ts` (12 unit tests) and `tests/techfingerprint-integration.test.ts` (4 pipeline tests); registered the connector in `server.ts`'s DI array (one import + two lines); updated `README.md` (feature list, architecture diagram, env vars), `CHANGELOG.md`, `.env.example`, `DEPLOYMENT.md`, `docs/CONNECTOR_SCORECARD.md`, and the memory docs.
+
+**Notable finding while testing**: the first integration-test run failed in a way that was *my test's* fault, not the connector's — `InvestigationService` keeps **static** full-investigation and per-connector caches that outlive individual service instances, so later tests were being served earlier tests' cached results. Correct production behavior; the fix was a distinct hostname per test (documented inline in the test file) rather than weakening the service. Worth remembering when writing tests for the next connector.
+
+**Real-domain smoke tests** (checklist requirement) exercised all three status paths against live infrastructure, and each SUCCESS was independently verified with `curl` rather than trusted:
+- `github.com` → SUCCESS, GitHub Pages via `x-github-request-id` (confirmed present on GET).
+- `registry.npmjs.org` → SUCCESS, Cloudflare at confidence 93 (90 base + 3 corroboration, since both `server: cloudflare` and `cf-ray` matched — both confirmed present).
+- `pypi.org` → SUCCESS, Gunicorn via `server: gunicorn` (confirmed; correctly reported *no* version, since the header carries none).
+- `proxy.golang.org` → NO_DATA (fetched cleanly, no signature matched).
+- Hosts denied by this sandbox's egress policy → ERROR, never a false NO_DATA — an unintended but valid negative test.
+
+**Verification**: `npm test` 256/256 (was 240), `npm run lint` clean, `npm run build` succeeds.
+
+**Checklist status** (`docs/CONNECTOR_RELEASE_CHECKLIST.md`): implemented, status semantics verified, diagnostics included, evidence validated, unit + integration tests added, test/build passing, real-domain smoke tests run, README/CHANGELOG/scorecard updated. Not done (user's call, and outside "implement the connector"): PR creation, squash merge, alpha tag.
+
+**Next**: `CertificateTransparencyConnector`, the second of the four v1.1 connectors.
+
+---
+
 ## 2026-07-28 — Release-readiness correction (post-Milestone 2)
 
 **Prompted by**: user instruction for a small, tightly-scoped correction — fix `PORT` handling, reconcile the two memory docs Milestone 2's narrowed scope had left stale, verify, and keep the diff minimal. Same standing constraints as Milestone 2 (no architecture/auth/investigation/connector/evidence/validation/scoring/frontend changes), plus an explicit request to explain architectural decisions before making them.

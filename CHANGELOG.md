@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- New `TechnologyFingerprintConnector` (Beta): identifies the web technologies a
+  target runs — web server, CMS, framework, CDN, language — from a single HTTPS
+  GET of its homepage. Detects only directly observable signal: response headers
+  (`Server`, `X-Powered-By`, `X-Generator`, vendor-proprietary headers),
+  `Set-Cookie` names, the `<meta name="generator">` tag, and distinctive
+  markup/asset-path markers. Every detection records the exact source and the
+  literal observed value so it can be independently re-verified, and versions are
+  reported only when they literally appear in the matched text — never inferred.
+  Emits `Technology` entities linked to the target domain by a
+  `RUNS_TECHNOLOGY` relationship. Configurable via `TECHFINGERPRINT_CACHE_TTL_MS`
+  and `TECHFINGERPRINT_TIMEOUT_MS`. See `docs/CONNECTOR_SCORECARD.md`.
 - New `SecurityTxtConnector` (Beta): checks a target's `/.well-known/security.txt`
   and legacy `/security.txt` locations, parses the RFC 9116 fields (Contact,
   Expires, Encryption, Preferred-Languages, Canonical, Policy, Hiring), and

@@ -44,8 +44,9 @@ Sentinel is an API-first intelligence platform that fans a single query — a do
 
 ## Features
 
-- **Parallel Multi-Source Investigation** — WHOIS, DNS, GitHub, and security.txt connectors run concurrently per query, each with its own configurable timeout, retry policy, and circuit breaker.
+- **Parallel Multi-Source Investigation** — WHOIS, DNS, GitHub, security.txt, and technology-fingerprint connectors run concurrently per query, each with its own configurable timeout, retry policy, and circuit breaker.
 - **security.txt (RFC 9116) Compliance Check** — Checks `/.well-known/security.txt` and the legacy `/security.txt` path, parses the standard fields (Contact, Expires, Policy, Preferred-Languages, Canonical, Encryption, Hiring), and flags expired files. *(Beta)*
+- **Technology Fingerprinting** — Identifies the web technologies a target runs — web server, CMS, framework, CDN, cloud platform, analytics, language — plus its security-header posture (HSTS, CSP, Referrer-Policy, Permissions-Policy). Detects only directly observable signal: response headers, `Set-Cookie` names, the `<meta name="generator">` tag, framework runtime globals, and parsed `<script src>` / `<link rel=stylesheet>` URLs. Matching asset URLs rather than raw page text is the primary false-positive defence — a page that merely *mentions* a vendor in prose is never reported as using it. Every detection records the exact source and the literal observed value, so any finding can be independently re-verified; versions are reported only when they literally appear in the matched text. Results appear in the report's **Technology Fingerprinting** section with expandable supporting evidence and detection diagnostics. *(Beta)*
 - **Deterministic Confidence & Risk Scoring** — Confidence and risk scores are computed from an explicit, auditable rule set (`src/config/scoringRules.json`), not inferred by the AI model.
 - **AI Meta-Analysis with Hallucination Detection** — Google Gemini synthesizes an executive summary and key findings from the collected evidence; every statement is cross-checked against verified entities/evidence and stripped or flagged if unsupported. The system degrades gracefully to a fully deterministic report generator if no AI key is configured or the model call fails.
 - **Entity Resolution** — Overlapping entities returned by different connectors are merged and de-duplicated into a canonical graph.
@@ -69,11 +70,11 @@ Sentinel is an API-first intelligence platform that fans a single query — a do
                        │  runs connectors in       │
                        │  parallel, merges results │
                        └────────────┬─────────────┘
-                    ┌───────────────┼───────────────┐
-              ┌─────▼─────┐  ┌──────▼──────┐  ┌──────▼──────┐
-              │  WHOIS    │  │     DNS     │  │   GitHub    │
-              │ Connector │  │  Connector  │  │  Intel      │
-              └───────────┘  └─────────────┘  └─────────────┘
+          ┌───────────┬───────────┼───────────┬───────────┐
+    ┌─────▼─────┐┌────▼────┐┌─────▼─────┐┌────▼────┐┌─────▼─────┐
+    │   WHOIS   ││   DNS   ││  GitHub   ││security ││   Tech    │
+    │ Connector ││Connector││  Intel    ││  .txt   ││Fingerprint│
+    └───────────┘└─────────┘└───────────┘└─────────┘└───────────┘
                                     │
                        ┌────────────▼─────────────┐
                        │   EntityResolutionService │
@@ -160,6 +161,8 @@ The app serves the Vite-powered frontend and the Express API together at `http:/
 | `GITHUB_CACHE_TTL_MS` | No | `3600000` | GitHub connector cache TTL (1 hour). |
 | `INVESTIGATION_CACHE_TTL_MS` | No | `300000` | Full-investigation result cache TTL (5 minutes). |
 | `SECURITYTXT_CACHE_TTL_MS` | No | `1800000` | security.txt (RFC 9116) lookup cache TTL (30 minutes). |
+| `TECHFINGERPRINT_CACHE_TTL_MS` | No | `1800000` | Technology fingerprint cache TTL (30 minutes). |
+| `TECHFINGERPRINT_TIMEOUT_MS` | No | `4000` | Technology fingerprint per-request timeout (4 seconds). |
 
 See [`.env.example`](.env.example) and [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, annotated list.
 

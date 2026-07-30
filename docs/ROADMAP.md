@@ -159,16 +159,16 @@ This milestone was executed under a tighter, explicitly-scoped instruction set t
 
 ---
 
-## Deferred: v1.1 Connector Expansion
+## v1.1 Connector Expansion — IN PROGRESS
 
-Recommendation: hold this behind Milestones 0–3. Shipping new connectors on top of an unfixed IDOR and untested ownership model just means more data exposed to the same bug.
+Originally held behind Milestones 0–3 (shipping connectors on top of an unfixed IDOR would just expose more data to the same bug). Unblocked once Milestones 0–2 closed the IDOR, added ownership regression tests, and completed release engineering.
 
-- `TechnologyFingerprintConnector`
-- `CertificateTransparencyConnector`
-- `ShodanConnector`
-- `Crawl4AI WebFootprintConnector`
+- [x] `TechnologyFingerprintConnector` — **Beta, shipped 2026-07-28.** Lives at `src/connectors/technologyFingerprint.ts`. Detects hosting/CDN, cloud platform, web server, framework, CMS, analytics, and security-header posture from six observable surfaces (response headers, security headers, `Set-Cookie` names, `<meta generator>`, framework runtime globals, and parsed `<script src>`/`<link rel=stylesheet>` URLs). Emits `Technology` entities linked to the target `Domain` via `RUNS_TECHNOLOGY`, plus per-run diagnostics (detection time, methods applied, technology count). Surfaced in the report as section 9, "Technology Fingerprinting", with expandable evidence. 29 tests.
+- [ ] `CertificateTransparencyConnector`
+- [ ] `ShodanConnector`
+- [ ] `Crawl4AI WebFootprintConnector`
 
-Each ships one at a time via `docs/CONNECTOR_RELEASE_CHECKLIST.md` once resumed.
+Each ships one at a time via `docs/CONNECTOR_RELEASE_CHECKLIST.md`.
 
 ## Further out
 
