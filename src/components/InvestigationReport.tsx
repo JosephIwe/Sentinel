@@ -1949,7 +1949,7 @@ export default function InvestigationReport({ response, targetType, targetQuery 
                   {!detected ? (
                     <p className="text-xs text-neutral-400 font-sans font-light">
                       {techStatus.status === "ERROR"
-                        ? `Technology fingerprinting could not be completed: ${techStatus.error || "the target was unreachable"}.`
+                        ? `Technology fingerprinting could not be completed: ${(techStatus.error || "the target was unreachable.").replace(/\.*$/, ".")}`
                         : "The target was reached successfully, but no technology signature was matched."}
                     </p>
                   ) : (
