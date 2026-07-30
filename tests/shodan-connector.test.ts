@@ -205,6 +205,21 @@ describe("ShodanConnector", () => {
       expect(result.error).toMatch(/says nothing about the target's actual internet exposure/i);
     });
 
+    it("carries the marker the report keys on to render 'not configured' rather than a failure", async () => {
+      delete process.env.SHODAN_API_KEY;
+
+      const result = await connector.run({ term: "203.0.113.10", type: "IPAddress" });
+
+      // The report section distinguishes "not configured" from a failed
+      // lookup with exactly this predicate. If either side changes, the UI
+      // silently starts presenting an unconfigured connector as a failure.
+      const rendersAsNotConfigured = result.status === "NO_DATA" && /not configured/i.test(result.error || "");
+      expect(rendersAsNotConfigured).toBe(true);
+      // NO_DATA carrying `error` must still read as a non-failure.
+      expect(result.success).toBe(true);
+      expect(result.status).not.toBe("ERROR");
+    });
+
     it("treats a whitespace-only key as unconfigured", async () => {
       process.env.SHODAN_API_KEY = "   ";
 
