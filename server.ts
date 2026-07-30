@@ -10,6 +10,7 @@ import { GithubIntelligenceConnector } from "./src/connectors/github-intel";
 import { SecurityTxtConnector } from "./src/connectors/securitytxt";
 import { TechnologyFingerprintConnector } from "./src/connectors/technologyFingerprint";
 import { CertificateTransparencyConnector } from "./src/connectors/certificateTransparency";
+import { AsnIpIntelligenceConnector } from "./src/connectors/asnIpIntelligence";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
 import { InvestigationWorker } from "./src/services/investigationWorker";
@@ -653,6 +654,7 @@ const githubIntelligenceConnector = new GithubIntelligenceConnector();
 const securityTxtConnector = new SecurityTxtConnector();
 const technologyFingerprintConnector = new TechnologyFingerprintConnector();
 const certificateTransparencyConnector = new CertificateTransparencyConnector();
+const asnIpIntelligenceConnector = new AsnIpIntelligenceConnector();
 
 const investigationService = new InvestigationService([
   whoisConnector,
@@ -661,6 +663,7 @@ const investigationService = new InvestigationService([
   securityTxtConnector,
   technologyFingerprintConnector,
   certificateTransparencyConnector,
+  asnIpIntelligenceConnector,
 ]);
 
 // Seed in-memory list tracking successful multi-source intelligence reports.

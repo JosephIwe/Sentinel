@@ -165,6 +165,8 @@ The app serves the Vite-powered frontend and the Express API together at `http:/
 | `TECHFINGERPRINT_TIMEOUT_MS` | No | `4000` | Technology fingerprint per-request timeout (4 seconds). |
 | `CT_CACHE_TTL_MS` | No | `3600000` | Certificate Transparency lookup cache TTL (1 hour). |
 | `CT_TIMEOUT_MS` | No | `4000` | Certificate Transparency per-request timeout (4 seconds). |
+| `ASN_CACHE_TTL_MS` | No | `3600000` | ASN / IP intelligence lookup cache TTL (1 hour). |
+| `ASN_TIMEOUT_MS` | No | `4000` | ASN / IP intelligence per-lookup timeout (4 seconds). |
 
 See [`.env.example`](.env.example) and [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, annotated list.
 
