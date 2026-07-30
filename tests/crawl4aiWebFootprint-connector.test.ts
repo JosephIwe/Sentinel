@@ -283,14 +283,14 @@ describe("Crawl4AiWebFootprintConnector", () => {
       }
     });
 
-    it("instructs the service not to follow links or leave the origin", async () => {
+    it("instructs the service not to leave the origin", async () => {
       await connector.run({ term: uniqueDomain(), type: "Domain" });
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
 
+      // Single-page scope comes from submitting one URL and never sending
+      // deep_crawl_strategy - not from knobs Crawl4AI would silently drop.
+      // See the "Crawl4AI contract conformance" block.
       expect(body.urls).toHaveLength(1);
-      expect(body.crawler_config.max_depth).toBe(0);
-      expect(body.crawler_config.max_pages).toBe(1);
-      expect(body.crawler_config.follow_links).toBe(false);
       expect(body.crawler_config.exclude_external_links).toBe(true);
     });
 
@@ -593,6 +593,226 @@ describe("Crawl4AiWebFootprintConnector", () => {
       expect(serialized).not.toContain("abc123");
       expect(serialized).not.toContain("Bearer zzz");
       expect(serialized).not.toContain("session=");
+    });
+  });
+
+  describe("Crawl4AI contract conformance", () => {
+    beforeEach(() => {
+      robots();
+      fetchMock.mockResolvedValue(textResponse(crawlResponse()));
+    });
+
+    it("sends only crawler_config keys Crawl4AI keeps for untrusted requests", async () => {
+      await connector.run({ term: uniqueDomain(), type: "Domain" });
+      const cfg = JSON.parse(fetchMock.mock.calls[0][1].body).crawler_config;
+
+      // Crawl4AI's untrusted filter silently drops non-allowlisted keys, so
+      // sending invented knobs would give false assurance.
+      expect(Object.keys(cfg).sort()).toEqual(["check_robots_txt", "exclude_external_links", "user_agent"]);
+      expect(cfg.exclude_external_links).toBe(true);
+      expect(cfg.check_robots_txt).toBe(true);
+    });
+
+    it("never sends fields Crawl4AI forbids or silently drops", async () => {
+      await connector.run({ term: uniqueDomain(), type: "Domain" });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const serialized = JSON.stringify(body);
+
+      // deep_crawl_strategy is the only field that enables multi-page crawling
+      // and is forbidden for untrusted bodies; these others are no-ops.
+      for (const field of ["deep_crawl_strategy", "js_code", "max_depth", "max_pages", "follow_links"]) {
+        expect(serialized).not.toContain(field);
+      }
+    });
+
+    it("submits exactly one URL", async () => {
+      await connector.run({ term: uniqueDomain(), type: "Domain" });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+
+      expect(body.urls).toHaveLength(1);
+      expect(body.urls[0]).toMatch(/^https:\/\//);
+    });
+
+    it("reads only the first result even if the service returns several", async () => {
+      fetchMock.mockResolvedValue(
+        textResponse(
+          JSON.stringify({
+            success: true,
+            results: [
+              { url: "https://example.test/", success: true, status_code: 200, html: RICH_HTML },
+              { url: "https://example.test/other", success: true, status_code: 200, html: "<html><title>Other</title></html>" }
+            ]
+          })
+        )
+      );
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      expect(result.rawData.diagnostics.pagesCrawled).toBe(1);
+      expect(JSON.stringify(result)).not.toContain("Other");
+    });
+
+    it("parses the documented success envelope", async () => {
+      fetchMock.mockResolvedValue(
+        textResponse(
+          JSON.stringify({
+            success: true,
+            results: [{ url: "https://example.test/", success: true, status_code: 200, html: RICH_HTML }],
+            server_processing_time_s: 1.23,
+            server_memory_delta_mb: 4.5
+          })
+        )
+      );
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      expect(result.status).toBe("SUCCESS");
+      expect(result.rawData.diagnostics.httpStatus).toBe(200);
+    });
+
+    it("prefers redirected_url over url when re-checking where the crawl landed", async () => {
+      fetchMock.mockResolvedValue(
+        textResponse(
+          JSON.stringify({
+            success: true,
+            results: [
+              {
+                url: "https://example.test/",
+                redirected_url: "https://www.example.test/home",
+                success: true,
+                status_code: 200,
+                html: RICH_HTML
+              }
+            ]
+          })
+        )
+      );
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      expect(assertPublicHostnameMock).toHaveBeenLastCalledWith("www.example.test");
+      expect(result.rawData.finalUrl).toBe("https://www.example.test/home");
+    });
+
+    it("blocks on redirected_url even when url looks public", async () => {
+      fetchMock.mockResolvedValue(
+        textResponse(
+          JSON.stringify({
+            success: true,
+            results: [
+              { url: "https://example.test/", redirected_url: "http://10.0.0.9/internal", success: true, html: RICH_HTML }
+            ]
+          })
+        )
+      );
+      assertPublicHostnameMock
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("SSRF Guard: blocked address (10.0.0.9)."));
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      expect(result.status).toBe("NO_DATA");
+      expect(JSON.stringify(result)).not.toContain("Example Corporation");
+    });
+
+    it("reports an authenticated service rejection as an actionable ERROR", async () => {
+      fetchMock.mockResolvedValue(textResponse("unauthorized", 401));
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      expect(result.status).toBe("ERROR");
+      expect(result.error).toMatch(/require[s]? authentication/i);
+      expect(result.error).toMatch(/HTTP 401/);
+    });
+
+    it("never surfaces response_headers from the crawl result", async () => {
+      fetchMock.mockResolvedValue(
+        textResponse(
+          crawlResponse({
+            response_headers: { "set-cookie": "sid=SECRETCOOKIE; HttpOnly", authorization: "Bearer SECRETTOKEN" }
+          })
+        )
+      );
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+      const serialized = JSON.stringify(result);
+
+      expect(serialized).not.toContain("SECRETCOOKIE");
+      expect(serialized).not.toContain("SECRETTOKEN");
+      expect(serialized).not.toContain("set-cookie");
+    });
+  });
+
+  describe("service URL credential redaction", () => {
+    it("strips basic-auth credentials from the service URL", () => {
+      expect(connector.redactServiceUrl("http://user:s3cr3t@crawl4ai:11235")).not.toContain("s3cr3t");
+      expect(connector.redactServiceUrl("http://user:s3cr3t@crawl4ai:11235")).toContain("crawl4ai:11235");
+      expect(connector.redactServiceUrl("http://crawl4ai:11235")).toBe("http://crawl4ai:11235");
+    });
+
+    it("keeps credentials out of diagnostics on a successful crawl", async () => {
+      process.env.CRAWL4AI_URL = "http://svcuser:SUPERSECRET@crawl4ai.internal:11235";
+      robots();
+      fetchMock.mockResolvedValue(textResponse(crawlResponse()));
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+      const serialized = JSON.stringify(result);
+
+      expect(result.status).toBe("SUCCESS");
+      expect(serialized).not.toContain("SUPERSECRET");
+      expect(serialized).not.toContain("svcuser");
+      expect(result.rawData.diagnostics.serviceUrl).toBe("http://crawl4ai.internal:11235");
+    });
+
+    it("keeps credentials out of the ERROR message when the service is unreachable", async () => {
+      process.env.CRAWL4AI_URL = "http://svcuser:SUPERSECRET@crawl4ai.internal:11235";
+      robots();
+      fetchMock.mockRejectedValue(new Error("ECONNREFUSED"));
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      expect(result.status).toBe("ERROR");
+      expect(JSON.stringify(result)).not.toContain("SUPERSECRET");
+    });
+
+    it("moves basic-auth credentials into an Authorization header", async () => {
+      process.env.CRAWL4AI_URL = "http://svcuser:SUPERSECRET@crawl4ai.internal:11235";
+      robots();
+      fetchMock.mockResolvedValue(textResponse(crawlResponse()));
+
+      await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      // fetch() refuses a URL carrying credentials outright, so the request URL
+      // must be credential-free and the auth must travel as a header.
+      expect(fetchMock.mock.calls[0][0]).toBe("http://crawl4ai.internal:11235/crawl");
+      expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(
+        `Basic ${Buffer.from("svcuser:SUPERSECRET").toString("base64")}`
+      );
+    });
+
+    it("sends no Authorization header when the service URL carries no credentials", async () => {
+      robots();
+      fetchMock.mockResolvedValue(textResponse(crawlResponse()));
+
+      await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      expect(fetchMock.mock.calls[0][1].headers.Authorization).toBeUndefined();
+    });
+
+    it("strips credentials an upstream error quoted back at us", async () => {
+      process.env.CRAWL4AI_URL = "http://svcuser:SUPERSECRET@crawl4ai.internal:11235";
+      robots();
+      // Mirrors undici's real rejection, which echoes the whole URL.
+      fetchMock.mockRejectedValue(
+        new Error(
+          "Request cannot be constructed from a URL that includes credentials: http://svcuser:SUPERSECRET@crawl4ai.internal:11235/crawl"
+        )
+      );
+
+      const result = await connector.run({ term: uniqueDomain(), type: "Domain" });
+
+      expect(result.status).toBe("ERROR");
+      expect(JSON.stringify(result)).not.toContain("SUPERSECRET");
     });
   });
 

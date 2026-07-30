@@ -17,6 +17,8 @@ interface CacheEntry {
  */
 interface Crawl4AiResult {
   url?: string;
+  /** Where the crawl actually landed after redirects. Preferred over `url`. */
+  redirected_url?: string;
   success?: boolean;
   status_code?: number;
   error_message?: string;
@@ -25,7 +27,9 @@ interface Crawl4AiResult {
   metadata?: Record<string, unknown>;
   links?: { internal?: unknown[]; external?: unknown[] };
   media?: { images?: unknown[] };
-  response_headers?: Record<string, string>;
+  // `response_headers` is deliberately NOT modelled. CrawlResult carries it,
+  // and it can contain Set-Cookie and authorization-bearing values; leaving it
+  // off the type keeps it from being read into evidence by accident.
 }
 
 interface Crawl4AiResponse {
@@ -75,8 +79,19 @@ const MAX_RESOURCE_URLS = 15;
 const MAX_FORMS_REPORTED = 10;
 const MAX_TECH_INDICATORS = 20;
 
-// v1 is deliberately a single-page read, not a crawler. These are sent to
-// the service AND enforced locally on what comes back.
+// v1 is deliberately a single-page read, not a crawler.
+//
+// These are enforced by construction rather than by asking the service
+// nicely. Crawl4AI's untrusted-request filter (`_filter_untrusted_fields`)
+// silently DROPS any key absent from its CrawlerRunConfig allowlist, so
+// invented knobs like `max_depth`/`max_pages`/`follow_links` would be
+// no-ops that merely looked like limits. What actually holds the line:
+//   1. Exactly one URL is submitted.
+//   2. `deep_crawl_strategy` - the only field that enables multi-page
+//      crawling - is on Crawl4AI's UNTRUSTED_FORBIDDEN_FIELDS list, so a
+//      request body cannot turn deep crawling on at all.
+//   3. Only `results[0]` is read here, so a service that returned more
+//      still cannot widen the footprint.
 const MAX_DEPTH = 0;
 const MAX_PAGES = 1;
 
@@ -128,7 +143,29 @@ const CONFIDENCE_TECH = 84;
  * It is therefore reached with a plain fetch rather than `safeFetch` - which
  * would reject exactly the private address a sidecar deployment uses - after
  * validating that it parses as an http/https URL. It is never derived from
- * investigation input, so a user cannot point it anywhere.
+ * investigation input, so a user cannot point it anywhere. Because it may
+ * legitimately carry basic-auth credentials, only its redacted form is ever
+ * written to evidence, diagnostics, errors, or logs.
+ *
+ * ## Verified against the Crawl4AI service contract
+ *
+ * Checked against `deploy/docker/{schemas,server,api}.py` and
+ * `crawl4ai/{async_configs,models}.py` upstream:
+ *
+ *   - `POST /crawl` accepts `{urls, browser_config, crawler_config}` and
+ *     answers `{success, results: [CrawlResult…]}`.
+ *   - Every `crawler_config` key sent here is on Crawl4AI's
+ *     `UNTRUSTED_FIELD_ALLOWLIST` for `CrawlerRunConfig`, so each takes
+ *     effect. Non-allowlisted keys are silently dropped server-side, which is
+ *     why no invented limit knobs are sent - they would look like constraints
+ *     while doing nothing.
+ *   - Every `CrawlResult` field read here (`url`, `redirected_url`, `html`,
+ *     `cleaned_html`, `metadata`, `links`, `status_code`, `success`,
+ *     `error_message`) exists on the upstream model. `response_headers` also
+ *     exists but is deliberately never read.
+ *   - The endpoint carries a token dependency that is active only when the
+ *     operator sets an api_token or enables JWT. This connector sends no
+ *     credential; a 401/403 is surfaced as an ERROR that says so.
  *
  * ## robots.txt
  *
@@ -143,6 +180,69 @@ export class Crawl4AiWebFootprintConnector implements Connector {
   public name = "Web Footprint";
 
   private static cache = new Map<string, CacheEntry>();
+
+  /**
+   * Strips any userinfo from a service URL before it is shown anywhere.
+   * `CRAWL4AI_URL` may legitimately carry basic-auth credentials
+   * (`http://user:pass@crawl4ai:11235`), and the raw value otherwise reaches
+   * diagnostics, evidence, error strings and logs. Only the redacted form is
+   * ever surfaced; the raw value is used solely to build the request.
+   */
+  /**
+   * Splits a service URL into a credential-free request URL and, when the
+   * configured value carried basic-auth userinfo, an Authorization header.
+   *
+   * `fetch()` refuses a URL containing credentials outright - and its rejection
+   * message echoes the whole URL, password included - so the userinfo has to be
+   * moved into a header both to work at all and to stay out of error text.
+   */
+  public buildServiceRequest(url: string): { requestUrl: string; authHeader?: string } {
+    try {
+      const parsed = new URL(url);
+      const user = decodeURIComponent(parsed.username || "");
+      const pass = decodeURIComponent(parsed.password || "");
+      if (!user && !pass) return { requestUrl: url };
+      parsed.username = "";
+      parsed.password = "";
+      return {
+        requestUrl: parsed.toString().replace(/\/+$/, ""),
+        authHeader: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`
+      };
+    } catch {
+      return { requestUrl: url };
+    }
+  }
+
+  /**
+   * Removes any configured-credential material from text that is about to be
+   * surfaced. Upstream errors can quote the URL we handed them, so redacting
+   * only our own interpolations is not enough.
+   */
+  private sanitizeMessage(message: string, rawServiceUrl: string): string {
+    let out = String(message).replace(/\/\/[^/@\s]*@/g, "//");
+    try {
+      const parsed = new URL(rawServiceUrl);
+      for (const secret of [parsed.password, parsed.username]) {
+        if (secret) out = out.split(decodeURIComponent(secret)).join("***").split(secret).join("***");
+      }
+    } catch {
+      /* unparseable: the userinfo strip above still applies */
+    }
+    return out;
+  }
+
+  public redactServiceUrl(url: string): string {
+    try {
+      const parsed = new URL(url);
+      if (!parsed.username && !parsed.password) return url;
+      parsed.username = "";
+      parsed.password = "";
+      return parsed.toString().replace(/\/+$/, "");
+    } catch {
+      // Unparseable: strip anything before an "@" rather than risk echoing it.
+      return url.replace(/\/\/[^/@]*@/, "//");
+    }
+  }
 
   /** The configured Crawl4AI service base URL, or null when unconfigured. */
   private getServiceUrl(): string | null {
@@ -587,6 +687,9 @@ export class Crawl4AiWebFootprintConnector implements Connector {
 
     const timeoutMs = this.getTimeoutMs();
     const targetUrl = `https://${domain}/`;
+    // Everything user-visible uses the redacted form; `serviceUrl` itself is
+    // only ever used to build the outbound request.
+    const safeServiceUrl = this.redactServiceUrl(serviceUrl);
 
     // ---- Step 1: prove the target is public BEFORE handing it over -----
     // The Crawl4AI service performs the fetch, so this check has to happen
@@ -635,19 +738,28 @@ export class Crawl4AiWebFootprintConnector implements Connector {
       // sidecar), so it is reached with a plain fetch rather than safeFetch,
       // which would reject that private address. It is validated as an
       // http/https URL above and never derived from investigation input.
-      response = await fetch(`${serviceUrl}/crawl`, {
+      const { requestUrl, authHeader } = this.buildServiceRequest(serviceUrl);
+      response = await fetch(`${requestUrl}/crawl`, {
         method: "POST",
         signal: controller.signal,
-        headers: { "Content-Type": "application/json", Accept: "application/json", "User-Agent": CRAWLER_USER_AGENT },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "User-Agent": CRAWLER_USER_AGENT,
+          ...(authHeader ? { Authorization: authHeader } : {})
+        },
         body: JSON.stringify({
+          // Exactly one URL. `deep_crawl_strategy` is never sent - it is on
+          // Crawl4AI's forbidden-for-untrusted list anyway - so the service
+          // performs a single page load and cannot wander.
           urls: [targetUrl],
           crawler_config: {
-            max_depth: MAX_DEPTH,
-            max_pages: MAX_PAGES,
-            // The service must not wander: no link following, no external
-            // fetches, no subdomain expansion.
-            follow_links: false,
+            // Every key below is on Crawl4AI's CrawlerRunConfig allowlist for
+            // untrusted requests, so each one actually takes effect. Keys
+            // outside that allowlist are silently dropped server-side, so
+            // none are sent.
             exclude_external_links: true,
+            check_robots_txt: true,
             user_agent: CRAWLER_USER_AGENT
           }
         })
@@ -659,20 +771,27 @@ export class Crawl4AiWebFootprintConnector implements Connector {
         timestamp,
         Date.now() - startedAt,
         isTimeout
-          ? `The Crawl4AI service at ${serviceUrl} timed out after ${timeoutMs}ms.`
-          : `The Crawl4AI service at ${serviceUrl} is unreachable: ${err?.message || "network error"}.`,
+          ? `The Crawl4AI service at ${safeServiceUrl} timed out after ${timeoutMs}ms.`
+          : `The Crawl4AI service at ${safeServiceUrl} is unreachable: ` +
+            `${this.sanitizeMessage(err?.message || "network error", serviceUrl)}.`,
         { configured: true, robotsAllowed: true }
       );
     }
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      return this.buildErrorResult(
-        timestamp,
-        Date.now() - startedAt,
-        `The Crawl4AI service returned HTTP ${response.status} for ${targetUrl}.`,
-        { configured: true, httpStatus: response.status, robotsAllowed: true }
-      );
+      // Crawl4AI can be deployed with an api_token or JWT gate. Say so
+      // plainly rather than leaving an operator guessing at a bare 401.
+      const message =
+        response.status === 401 || response.status === 403
+          ? `The Crawl4AI service at ${safeServiceUrl} rejected the request (HTTP ${response.status}). ` +
+            `The service appears to require authentication, which this connector does not send.`
+          : `The Crawl4AI service returned HTTP ${response.status} for ${targetUrl}.`;
+      return this.buildErrorResult(timestamp, Date.now() - startedAt, message, {
+        configured: true,
+        httpStatus: response.status,
+        robotsAllowed: true
+      });
     }
 
     let text: string;
@@ -748,7 +867,12 @@ export class Crawl4AiWebFootprintConnector implements Connector {
       );
     }
 
-    const finalUrl = typeof page.url === "string" && page.url ? page.url : targetUrl;
+    // `redirected_url` is where the crawl actually ended; `url` may still be
+    // the URL originally requested. The SSRF re-check below must run against
+    // the real destination, so the redirect field wins when present.
+    const finalUrl =
+      (typeof page.redirected_url === "string" && page.redirected_url ? page.redirected_url : "") ||
+      (typeof page.url === "string" && page.url ? page.url : targetUrl);
 
     // ---- Step 4: re-check where the crawl actually ended ----------------
     // The service follows redirects; if it landed on a private host, the
@@ -793,7 +917,7 @@ export class Crawl4AiWebFootprintConnector implements Connector {
     const diagnostics = {
       detectionTimeMs,
       source: "Crawl4AI service",
-      serviceUrl,
+      serviceUrl: safeServiceUrl,
       target: domain,
       requestedUrl: targetUrl,
       finalUrl,
