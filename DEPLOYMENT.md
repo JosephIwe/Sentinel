@@ -30,6 +30,8 @@ The application is configured dynamically using environment variables. Below is 
 - `DNS_CACHE_TTL_MS`: Cache duration (in milliseconds) for active authoritative DNS query loops. Defaults to `300000` (5 minutes).
 - `GITHUB_CACHE_TTL_MS`: Cache duration (in milliseconds) for GitHub intelligence scans. Defaults to `3600000` (1 hour).
 - `INVESTIGATION_CACHE_TTL_MS`: Cache duration (in milliseconds) for aggregated intelligence jobs. Defaults to `300000` (5 minutes).
+- `SECURITYTXT_CACHE_TTL_MS`: Cache duration (in milliseconds) for security.txt (RFC 9116) lookups. Defaults to `1800000` (30 minutes).
+- `APP_ACCESS_CODE`: When set, gates the web UI behind a one-time shared access code (signed HttpOnly cookie, ~30 day lifetime). Does not apply to `/api/*` requests. Leave unset to disable the gate entirely. See `utils/betaGate.ts`.
 
 ---
 
@@ -90,7 +92,7 @@ The build pipeline compiles all backend TypeScript files into a single, optimize
    ```
 
 ### Docker Deployment
-Below is a standard production-ready `Dockerfile` layout for container environments:
+A production-ready multi-stage [`Dockerfile`](Dockerfile) is included in the repository root:
 
 ```dockerfile
 FROM node:18-alpine AS builder
@@ -105,10 +107,17 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 EXPOSE 3000
 CMD ["node", "dist/server.cjs"]
+```
+
+Build and run it directly:
+
+```bash
+docker build -t sentinel-api .
+docker run -p 3000:3000 sentinel-api
 ```
 
 ---

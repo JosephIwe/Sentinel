@@ -12,8 +12,8 @@ Thank you for your interest in contributing to Sentinel API! We welcome contribu
 
 2. **Clone and Install**:
    ```bash
-   git clone https://github.com/your-org/sentinel-api.git
-   cd sentinel-api
+   git clone https://github.com/JosephIwe/Sentinel.git
+   cd Sentinel
    npm install
    ```
 

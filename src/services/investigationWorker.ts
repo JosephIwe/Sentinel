@@ -11,6 +11,7 @@ import { IntelligenceService } from "./intelligence";
  */
 export class InvestigationWorker {
   private jobs = new Map<string, InvestigationJob>();
+  private abortControllers = new Map<string, AbortController>();
   private investigationService: InvestigationService;
   private aiClient: any;
   private onJobCompleted?: (job: any) => void;
@@ -38,7 +39,8 @@ export class InvestigationWorker {
     };
     
     this.jobs.set(jobId, job);
-    
+    this.abortControllers.set(jobId, new AbortController());
+
     // Defer execution to background process loop
     setImmediate(() => {
       this.processJob(jobId);
@@ -55,16 +57,37 @@ export class InvestigationWorker {
   }
 
   /**
-   * Cancels a pending or active job
+   * Cancels a pending or active job. Beyond flipping the status flag, this
+   * aborts the job's AbortSignal so in-flight work actually stops: connectors
+   * that haven't started yet are skipped, an in-flight GitHub-discovery fetch
+   * is killed, and the Gemini call is skipped in favor of the free
+   * deterministic fallback if cancellation lands before AI synthesis starts.
    */
   public cancelJob(jobId: string): boolean {
     const job = this.jobs.get(jobId);
     if (job && (job.status === "queued" || job.status === "running")) {
       job.status = "cancelled";
       job.completedAt = new Date().toISOString();
+      this.abortControllers.get(jobId)?.abort();
       return true;
     }
     return false;
+  }
+
+  /**
+   * Reads job.status through a fresh parameter binding rather than the
+   * narrowed local in processJob(). TypeScript's control-flow analysis
+   * narrows `job.status` to whatever literal it was last assigned (e.g.
+   * "running") within processJob's own lexical scope and doesn't account for
+   * cancelJob() mutating the same object concurrently via the shared `jobs`
+   * map across an await - so a direct `job.status === "cancelled"` check
+   * later in processJob is (wrongly) flagged as an impossible comparison.
+   * Routing the check through this helper re-reads `.status` against its
+   * full declared union type, avoiding both the false-positive type error
+   * and an unsafe `as string` cast.
+   */
+  private isCancelled(job: InvestigationJob): boolean {
+    return job.status === "cancelled";
   }
 
   /**
@@ -73,16 +96,21 @@ export class InvestigationWorker {
   private async processJob(jobId: string) {
     const job = this.jobs.get(jobId);
     if (!job) return;
+    const signal = this.abortControllers.get(jobId)?.signal;
 
     const jobStartedAt = Date.now();
 
     try {
+      // A job cancelled between createJob() and this deferred callback firing
+      // must stay cancelled, not get overwritten back to "running" below.
+      if (this.isCancelled(job)) return;
+
       // Stage 1: Spin up container/allocate resource
       job.status = "running";
       job.progress = 15;
       await this.sleep(50); // Minimal visual transition sleep instead of 1.2s blocking sleep
-      
-      if ((job.status as string) === "cancelled") return;
+
+      if (this.isCancelled(job)) return;
 
       // Stage 2: Parallel Connector Querying
       const mappedType = this.mapTypeToQueryType(job.type);
@@ -102,20 +130,20 @@ export class InvestigationWorker {
         job.progress = progressivePercent;
       };
 
-      const investigationResult = await this.investigationService.investigate(query, onConnectorCompleted);
+      const investigationResult = await this.investigationService.investigate(query, onConnectorCompleted, signal);
       await this.sleep(50);
 
-      if ((job.status as string) === "cancelled") return;
+      if (this.isCancelled(job)) return;
 
       // Stage 3: AI Cognitive Synthesis
       job.progress = 75;
       const aiSummaryStart = Date.now();
       const intelligenceService = new IntelligenceService(this.aiClient);
-      const intelligenceReport = await intelligenceService.analyze(investigationResult);
+      const intelligenceReport = await intelligenceService.analyze(investigationResult, signal);
       const aiSummaryTimeMs = Date.now() - aiSummaryStart;
       await this.sleep(50);
 
-      if ((job.status as string) === "cancelled") return;
+      if (this.isCancelled(job)) return;
 
       // Stage 4: Compiling resolved structures
       job.progress = 95;
@@ -164,6 +192,11 @@ export class InvestigationWorker {
       job.progress = 100;
       job.completedAt = new Date().toISOString();
       job.error = err.message || "An unexpected orchestration error occurred.";
+    } finally {
+      // Job has reached a terminal state (completed/failed/cancelled) or the
+      // "cancelled" early-returns above fired; the controller has no further
+      // use, so drop it rather than leaking one per job for the process lifetime.
+      this.abortControllers.delete(jobId);
     }
   }
 

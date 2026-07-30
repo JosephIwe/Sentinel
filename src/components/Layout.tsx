@@ -1,5 +1,5 @@
-import React from "react";
-import { Shield, LayoutDashboard, Terminal, Key, BookOpen, LogOut, User as UserIcon, LogIn, Cpu, History } from "lucide-react";
+import React, { useState } from "react";
+import { Shield, LayoutDashboard, Terminal, Key, BookOpen, LogOut, User as UserIcon, LogIn, Cpu, History, Menu, X } from "lucide-react";
 import { User } from "../types";
 
 interface LayoutProps {
@@ -10,6 +10,13 @@ interface LayoutProps {
   onLogout: () => void;
 }
 
+interface NavItem {
+  page: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  id: string;
+}
+
 export default function Layout({
   children,
   currentPage,
@@ -17,6 +24,21 @@ export default function Layout({
   user,
   onLogout,
 }: LayoutProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navItems: NavItem[] = [
+    { page: "landing", label: "Overview", icon: Shield, id: "nav-btn-landing-mobile" },
+    { page: "playground", label: "API Playground", icon: Terminal, id: "nav-btn-playground-mobile" },
+    { page: "history", label: "History", icon: History, id: "nav-btn-history-mobile" },
+    { page: "docs", label: "Documentation", icon: BookOpen, id: "nav-btn-docs-mobile" },
+    ...(user ? [{ page: "dashboard", label: "Dashboard", icon: LayoutDashboard, id: "nav-btn-dashboard-mobile" }] : []),
+  ];
+
+  const goTo = (page: string) => {
+    setCurrentPage(page);
+    setMobileMenuOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-[#07070a] text-gray-100 font-sans flex flex-col antialiased">
       {/* Glow Effect Accents */}
@@ -27,8 +49,8 @@ export default function Layout({
       <header className="sticky top-0 z-50 backdrop-blur-md bg-[#07070a]/75 border-b border-gray-800/60 print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Logo */}
-          <div 
-            onClick={() => setCurrentPage("landing")} 
+          <div
+            onClick={() => goTo("landing")}
             className="flex items-center space-x-2.5 cursor-pointer group"
             id="nav-logo"
           >
@@ -115,6 +137,18 @@ export default function Layout({
 
           {/* User Actions */}
           <div className="flex items-center space-x-3">
+            {/* Mobile menu toggle - the nav above is `hidden md:flex`, so
+                below md this is the only way to reach Playground/History/
+                Docs/Dashboard at all. */}
+            <button
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              className="md:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-900/40 transition-colors"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
+              id="btn-mobile-menu-toggle"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
             {user ? (
               <div className="flex items-center space-x-3 bg-gray-900/40 border border-gray-800/80 px-3 py-1.5 rounded-full">
                 <div className="flex items-center space-x-2">
@@ -146,6 +180,31 @@ export default function Layout({
             )}
           </div>
         </div>
+
+        {/* Mobile menu panel */}
+        {mobileMenuOpen && (
+          <nav className="md:hidden border-t border-gray-800/60 bg-[#07070a]/95 px-4 sm:px-6 py-3 space-y-1 animate-fade-in">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPage === item.page;
+              return (
+                <button
+                  key={item.page}
+                  onClick={() => goTo(item.page)}
+                  className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                    isActive
+                      ? "bg-gray-800/80 text-white border border-gray-700/60"
+                      : "text-gray-400 hover:text-white hover:bg-gray-900/40"
+                  }`}
+                  id={item.id}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        )}
       </header>
 
       {/* Beta Banner - remove this block to disable */}

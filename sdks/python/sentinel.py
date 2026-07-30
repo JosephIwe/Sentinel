@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Sentinel Security Intelligence Platform - Official Python SDK
-Version: 1.0.0
+Version: 1.0.0-rc.1
 
 Zero-dependency Python client for querying Sentinel intelligence feeds,
 initiating synchronous/asynchronous asset scans, and polling completed reports.

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Key, Zap, Terminal, Plus, Shield, CheckCircle2, AlertTriangle, 
-  Trash2, RefreshCw, Eye, EyeOff, Copy, Check, Clock, Server, BarChart3, Database 
+import {
+  Key, Zap, Terminal, Plus, Shield, CheckCircle2, AlertTriangle,
+  Trash2, RefreshCw, Eye, EyeOff, Copy, Check, Clock, Server, BarChart3, Database
 } from "lucide-react";
 import { ApiKey, ExtractionJob, ApiMetrics } from "../types";
 
@@ -9,9 +9,9 @@ interface DashboardViewProps {
   apiKeys: ApiKey[];
   extractionJobs: ExtractionJob[];
   metrics: ApiMetrics | null;
-  onAddKey: (name: string, rateLimit: number) => void;
-  onRevokeKey: (id: string) => void;
-  onRotateKey: (id: string) => void;
+  onAddKey: (name: string, rateLimit: number) => Promise<boolean | string>;
+  onRevokeKey: (id: string) => Promise<boolean | string>;
+  onRotateKey: (id: string) => Promise<boolean | string>;
   setCurrentPage: (page: string) => void;
 }
 
@@ -28,9 +28,12 @@ export default function DashboardView({
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyLimit, setNewKeyLimit] = useState(300);
   const [isCreatingKey, setIsCreatingKey] = useState(false);
+  const [isSavingKey, setIsSavingKey] = useState(false);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [revealedKeyId, setRevealedKeyId] = useState<string | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [keysError, setKeysError] = useState<string | null>(null);
+  const [pendingKeyActionId, setPendingKeyActionId] = useState<string | null>(null);
 
   // Auto-clear clipboard checks
   useEffect(() => {
@@ -45,35 +48,40 @@ export default function DashboardView({
     setCopiedKeyId(id);
   };
 
-  const handleCreateKey = (e: React.FormEvent) => {
+  const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyName.trim()) return;
-    onAddKey(newKeyName, newKeyLimit);
+    setKeysError(null);
+    setIsSavingKey(true);
+    const result = await onAddKey(newKeyName, newKeyLimit);
+    setIsSavingKey(false);
+    if (result !== true) {
+      setKeysError(typeof result === "string" ? result : "Failed to create key.");
+      return;
+    }
     setNewKeyName("");
     setIsCreatingKey(false);
   };
 
-  // Generate beautiful interactive SVG data points representing Linear/Stripe style charts
-  const chartPoints = [
-    { hour: "00:00", requests: 2400 },
-    { hour: "04:00", requests: 3800 },
-    { hour: "08:00", requests: 5200 },
-    { hour: "12:00", requests: 9400 },
-    { hour: "16:00", requests: 7100 },
-    { hour: "20:00", requests: 4600 },
-    { hour: "24:00", requests: 3100 },
-  ];
+  const handleRevoke = async (id: string) => {
+    setKeysError(null);
+    setPendingKeyActionId(id);
+    const result = await onRevokeKey(id);
+    setPendingKeyActionId(null);
+    if (result !== true) {
+      setKeysError(typeof result === "string" ? result : "Failed to revoke key.");
+    }
+  };
 
-  const maxRequests = Math.max(...chartPoints.map(p => p.requests));
-  const svgWidth = 600;
-  const svgHeight = 160;
-
-  // Map request stats to SVG points
-  const pointsString = chartPoints.map((p, idx) => {
-    const x = (idx / (chartPoints.length - 1)) * (svgWidth - 40) + 20;
-    const y = svgHeight - ((p.requests / maxRequests) * (svgHeight - 40) + 20);
-    return `${x},${y}`;
-  }).join(" ");
+  const handleRotate = async (id: string) => {
+    setKeysError(null);
+    setPendingKeyActionId(id);
+    const result = await onRotateKey(id);
+    setPendingKeyActionId(null);
+    if (result !== true) {
+      setKeysError(typeof result === "string" ? result : "Failed to rotate key.");
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full flex-grow flex flex-col justify-start">
@@ -140,86 +148,28 @@ export default function DashboardView({
             })}
           </div>
 
-          {/* Interactive Request Chart */}
+          {/* Ingress Distribution placeholder - this used to render a fully
+              hardcoded 24h line chart with fabricated numbers, unconnected to
+              `metrics`, styled to look like live telemetry. Sentinel's core
+              product principle is to never present fabricated data as real
+              (see docs/TECH_DECISIONS.md), so rather than keep inventing
+              numbers, this is an honest "not tracked yet" state until
+              request-level, timestamped usage logging exists to back a real
+              chart. */}
           <div className="bg-[#0a0a0f] border border-gray-900 rounded-xl p-6 relative">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-sm font-semibold text-gray-200">Ingress Distribution (24h)</h3>
-                <p className="text-[11px] text-gray-500 font-light">Developer requests routed across global edge instances</p>
-              </div>
-              <div className="flex items-center space-x-4 font-mono text-[10px]">
-                <span className="flex items-center text-blue-400">
-                  <span className="w-2 h-2 bg-blue-400 rounded-full mr-1.5" />
-                  Ingress Inbound
-                </span>
-                <span className="text-gray-500">P99 Rate Limit: OK</span>
+                <p className="text-[11px] text-gray-500 font-light">Time-series request distribution for your keys</p>
               </div>
             </div>
-
-            {/* SVG Line Graph */}
-            <div className="w-full overflow-x-auto">
-              <svg className="w-full min-w-[500px]" viewBox={`0 0 ${svgWidth} ${svgHeight}`} fill="none">
-                {/* Horizontal Gridlines */}
-                {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-                  const y = svgHeight - (ratio * (svgHeight - 40) + 20);
-                  return (
-                    <line
-                      key={i}
-                      x1="20"
-                      y1={y}
-                      x2={svgWidth - 20}
-                      y2={y}
-                      stroke="#111827"
-                      strokeDasharray="4 4"
-                      strokeWidth="1"
-                    />
-                  );
-                })}
-
-                {/* Gradient area under the path */}
-                <defs>
-                  <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.15" />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d={`M 20,${svgHeight - 20} L ${pointsString} L ${svgWidth - 20},${svgHeight - 20} Z`}
-                  fill="url(#chartGlow)"
-                />
-
-                {/* SVG Core Path Line */}
-                <polyline
-                  fill="none"
-                  stroke="#3b82f6"
-                  strokeWidth="2"
-                  points={pointsString}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-
-                {/* Highlight Circle Dots */}
-                {chartPoints.map((p, idx) => {
-                  const x = (idx / (chartPoints.length - 1)) * (svgWidth - 40) + 20;
-                  const y = svgHeight - ((p.requests / maxRequests) * (svgHeight - 40) + 20);
-                  return (
-                    <g key={idx} className="group/dot cursor-pointer">
-                      <circle cx={x} cy={y} r="3" fill="#3b82f6" />
-                      <circle cx={x} cy={y} r="7" className="stroke-blue-500/30 fill-transparent opacity-0 group-hover/dot:opacity-100 transition-opacity" strokeWidth="2" />
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-
-            {/* Time labels below SVG */}
-            <div className="flex justify-between px-5 font-mono text-[9px] text-gray-500 border-t border-gray-900/60 pt-3 mt-1">
-              {chartPoints.map((p, i) => (
-                <div key={i} className="text-center">
-                  <span className="block text-gray-400 font-medium">{p.hour}</span>
-                  <span className="block text-[8px] text-gray-600 font-light">{p.requests.toLocaleString()} req</span>
-                </div>
-              ))}
+            <div className="flex flex-col items-center justify-center text-center py-10 border border-dashed border-gray-900 rounded-lg">
+              <BarChart3 className="w-6 h-6 text-gray-700 mb-2" />
+              <p className="text-xs text-gray-500 font-medium">Hourly breakdown not yet tracked</p>
+              <p className="text-[10px] text-gray-600 font-light mt-1 max-w-xs">
+                Sentinel currently reports lifetime totals only (see the stats above). A real-time chart will
+                appear here once per-request, timestamped usage logging is added.
+              </p>
             </div>
           </div>
         </div>
@@ -244,6 +194,20 @@ export default function DashboardView({
               <span>Provision Key</span>
             </button>
           </div>
+
+          {/* Key management errors */}
+          {keysError && (
+            <div className="bg-red-500/[0.04] border border-red-900/40 rounded-lg p-3.5 flex items-start space-x-2.5 text-red-300 text-xs" id="dashboard-keys-error">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="font-light">{keysError}</span>
+              <button
+                onClick={() => setKeysError(null)}
+                className="ml-auto text-red-400/70 hover:text-red-300 font-mono text-[10px] shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* Create Key Form overlay modal simulation inline */}
           {isCreatingKey && (
@@ -277,14 +241,16 @@ export default function DashboardView({
               <div className="flex items-center space-x-2 pt-1.5">
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white cursor-pointer"
+                  disabled={isSavingKey}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                 >
-                  Generate Key
+                  {isSavingKey ? "Generating…" : "Generate Key"}
                 </button>
                 <button
                   type="button"
+                  disabled={isSavingKey}
                   onClick={() => setIsCreatingKey(false)}
-                  className="px-3.5 py-1.5 bg-gray-900 hover:bg-gray-800 rounded-lg text-xs font-medium text-gray-400 cursor-pointer"
+                  className="px-3.5 py-1.5 bg-gray-900 hover:bg-gray-800 rounded-lg text-xs font-medium text-gray-400 cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -362,15 +328,17 @@ export default function DashboardView({
                           {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                         <button
-                          onClick={() => onRotateKey(key.id)}
-                          className="p-1.5 rounded bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-blue-400 border border-gray-800/60"
+                          onClick={() => handleRotate(key.id)}
+                          disabled={pendingKeyActionId === key.id}
+                          className="p-1.5 rounded bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-blue-400 border border-gray-800/60 disabled:opacity-50 disabled:cursor-wait"
                           title="Rotate Token Credentials"
                         >
-                          <RefreshCw className="w-3.5 h-3.5" />
+                          <RefreshCw className={`w-3.5 h-3.5 ${pendingKeyActionId === key.id ? "animate-spin" : ""}`} />
                         </button>
                         <button
-                          onClick={() => onRevokeKey(key.id)}
-                          className="p-1.5 rounded bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-800/60"
+                          onClick={() => handleRevoke(key.id)}
+                          disabled={pendingKeyActionId === key.id}
+                          className="p-1.5 rounded bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-800/60 disabled:opacity-50 disabled:cursor-wait"
                           title="Revoke Credentials permanently"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -385,12 +353,20 @@ export default function DashboardView({
         </div>
       )}
 
-      {/* Extraction Logs */}
+      {/* Extraction Logs - jobs created via the POST /playground/transform API
+          endpoint (schema-based extraction, typically called by SDK/API
+          clients directly, see DocsView). Distinct from the Investigation
+          Playground UI above, which runs domain/email/company/username
+          investigations via /api/investigations instead - those show up in
+          "Investigation History" (the History page), not here. The two are
+          intentionally separate features with separate data, not a UI bug. */}
       {activeTab === "jobs" && (
         <div className="space-y-6 animate-fade-in">
           <div>
             <h3 className="text-sm font-semibold text-gray-200">Execution & Extraction Pipeline Logs</h3>
-            <p className="text-[11px] text-gray-500 font-light">Review real-time structured schema output payloads processed across our AI translation nodes.</p>
+            <p className="text-[11px] text-gray-500 font-light">
+              Structured schema-extraction jobs submitted via <code className="text-gray-400">POST /playground/transform</code> (typically by API/SDK clients — see Documentation). Investigations run in the Playground above appear under "Investigation History" instead.
+            </p>
           </div>
 
           <div className="border border-gray-900 rounded-xl overflow-hidden bg-[#0a0a0f]">

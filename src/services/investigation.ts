@@ -118,10 +118,16 @@ export class InvestigationService {
    * 
    * @param query - Structured query object containing search term and options
    * @param onConnectorCompleted - Optional progressive update callback
+   * @param signal - Optional AbortSignal; when already aborted, connectors that
+   *   haven't started yet are skipped entirely (no network call issued), and
+   *   an in-flight GitHub-discovery fetch is aborted if the signal fires
+   *   mid-request. Lets a cancelled job stop consuming connector quota
+   *   instead of running to completion in the background.
    */
   public async investigate(
     query: InvestigationQuery,
-    onConnectorCompleted?: (connectorName: string, result: ConnectorResult, elapsedMs: number) => void
+    onConnectorCompleted?: (connectorName: string, result: ConnectorResult, elapsedMs: number) => void,
+    signal?: AbortSignal
   ): Promise<InvestigationResult> {
     const startTime = Date.now();
     const term = query.term.trim();
@@ -162,6 +168,29 @@ export class InvestigationService {
     // Each connector is hardened with: configurable timeout, retries, circuit breaker, and caching.
     const runPromises = this.connectors.map(async (connector) => {
       const connectorStartTime = Date.now();
+
+      if (signal?.aborted) {
+        const cancelledResult: ConnectorResult = {
+          connectorName: connector.name,
+          success: false,
+          status: "ERROR",
+          verified: true,
+          timestamp: new Date().toISOString(),
+          entities: [],
+          relationships: [],
+          timeline: [],
+          evidences: [],
+          sources: [],
+          error: "Investigation was cancelled before this connector started."
+        };
+        const elapsed = Date.now() - connectorStartTime;
+        connectorTimesMs[connector.name] = elapsed;
+        if (onConnectorCompleted) {
+          onConnectorCompleted(connector.name, cancelledResult, elapsed);
+        }
+        return cancelledResult;
+      }
+
       let activeQuery = { ...query };
 
       const isGithubConnector = connector.name.toLowerCase().includes("github") || connector.name.toLowerCase().includes("git");
@@ -200,17 +229,28 @@ export class InvestigationService {
           let fetchError: string | null = null;
 
           for (const url of urlsToTry) {
+            if (signal?.aborted) {
+              fetchError = "Investigation was cancelled";
+              break;
+            }
             try {
               const controller = new AbortController();
               const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s fetch limit
-              const res = await safeFetch(url, {
-                signal: controller.signal,
-                headers: {
-                  "User-Agent": "Sentinel-GitHub-Discovery/1.0",
-                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-                }
-              });
-              clearTimeout(timeoutId);
+              const forwardAbort = () => controller.abort();
+              signal?.addEventListener("abort", forwardAbort);
+              let res;
+              try {
+                res = await safeFetch(url, {
+                  signal: controller.signal,
+                  headers: {
+                    "User-Agent": "Sentinel-GitHub-Discovery/1.0",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                  }
+                });
+              } finally {
+                clearTimeout(timeoutId);
+                signal?.removeEventListener("abort", forwardAbort);
+              }
               if (res.ok) {
                 html = await res.text();
                 githubDiscoveryStatus = `Successfully fetched homepage via ${url.split("://")[0].toUpperCase()}`;

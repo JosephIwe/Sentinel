@@ -52,7 +52,13 @@ const getAiClient = () => {
 };
 
 export const app = express();
-const PORT = 3000;
+
+function resolvePort(): number {
+  const parsed = parseInt(process.env.PORT || "", 10);
+  if (!isNaN(parsed) && parsed > 0) return parsed;
+  return 3000;
+}
+const PORT = resolvePort();
 
 // Apply global request correlation tracking and performance auditing first,
 // so a request ID exists even if body parsing below fails.
@@ -104,7 +110,7 @@ app.get("/ready", (req, res) => {
 
 app.get("/version", (req, res) => {
   res.json({
-    version: "1.0.0",
+    version: "1.0.0-rc.1",
     name: "Sentinel API Intelligence Platform",
     nodeVersion: process.version,
     env: process.env.NODE_ENV || "development"
@@ -130,6 +136,11 @@ const GUEST_USER = {
 // on every process start - never hardcoded, never written back to source.
 // Production deployments start with zero keys; operators must create their
 // own via POST /keys (which requires an existing valid credential/session).
+//
+// `ownerId` ties a key to the tenant that created it (see authenticateRequest
+// below): previously every key resolved to one shared identity
+// (`usr_api_client`), so any API key could see and mutate every other
+// tenant's keys/jobs/history/reports. Each key is now its own tenant scope.
 let apiKeys: Array<{
   id: string;
   name: string;
@@ -139,7 +150,13 @@ let apiKeys: Array<{
   lastUsedAt: string | null;
   requestCount: number;
   rateLimit: number;
+  ownerId: string;
 }> = [];
+
+// Dedicated, stable owner id for the local-dev demo key - kept separate from
+// GUEST_USER.id so a dev's demo key isn't accidentally co-mingled with real
+// anonymous/guest-created data.
+const LOCAL_DEV_OWNER_ID = "usr_local_dev";
 
 if (process.env.NODE_ENV !== "production") {
   const demoKey = {
@@ -150,7 +167,8 @@ if (process.env.NODE_ENV !== "production") {
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
     requestCount: 0,
-    rateLimit: 1200
+    rateLimit: 1200,
+    ownerId: LOCAL_DEV_OWNER_ID
   };
   apiKeys = [demoKey];
   console.log(
@@ -172,9 +190,21 @@ function maskSecret(secret: string): string {
   return `${secret.substring(0, 12)}${"•".repeat(secret.length - 12)}`;
 }
 
+// Returns a client-safe error detail string: the real message outside
+// production (for local debugging), or undefined in production so internal
+// exception text (stack-adjacent messages, dependency errors, file paths)
+// never reaches API clients. Mirrors utils/observability.ts's errorHandler.
+function errorDetails(err: any): string | undefined {
+  return process.env.NODE_ENV === "production" ? undefined : err?.message;
+}
+
+// Seeded demo jobs are attributed to the guest tenant so they remain visible
+// when browsing the app anonymously (the typical way to look around the demo
+// without creating an account), without being visible to every other tenant.
 let extractionJobs: any[] = [
   {
     id: "job_01",
+    userId: "usr_guest",
     url: "https://news.ycombinator.com",
     schemaType: "Company Intelligence",
     schemaDefinition: '{"properties": {"startupName": "string", "raisedAmount": "number"}}',
@@ -186,6 +216,7 @@ let extractionJobs: any[] = [
   },
   {
     id: "job_02",
+    userId: "usr_guest",
     url: "https://stripe.com/pricing",
     schemaType: "Product Pricing",
     schemaDefinition: '{"properties": {"planName": "string", "monthlyCost": "number"}}',
@@ -227,11 +258,15 @@ function authenticateRequest(req: any, res: any, next: any) {
     // Key is verified, track stats
     keyRecord.requestCount += 1;
     keyRecord.lastUsedAt = new Date().toISOString();
-    
+
+    // Identity is scoped to whoever owns this specific key (see `ownerId` on
+    // apiKeys above), not a single identity shared by every key holder - that
+    // sharing was the root cause of a cross-tenant IDOR across /keys, /jobs,
+    // /history, /reports, and /investigations.
     req.apiKey = keyRecord;
     req.user = {
-      id: "usr_api_client",
-      email: "api@sentinelapi.dev",
+      id: keyRecord.ownerId,
+      email: `api-client+${keyRecord.id}@sentinelapi.dev`,
       name: `API Client (${keyRecord.name})`,
       companyName: "Sentinel Developer Workspace",
       plan: "Enterprise",
@@ -358,8 +393,14 @@ apiV1Router.post("/auth/logout", (req: any, res) => {
 });
 
 // 2. API Key Management
+//
+// All four routes below are scoped to req.user.id (the caller's tenant
+// identity - see authenticateRequest). A caller only ever sees, revokes, or
+// rotates keys it owns; a nonexistent id and someone else's id both return
+// the same 404 so ownership can't be probed by status code.
 apiV1Router.get("/keys", authenticateRequest, (req: any, res) => {
-  const maskedKeys = apiKeys.map(k => ({ ...k, secret: maskSecret(k.secret) }));
+  const ownKeys = apiKeys.filter(k => k.ownerId === req.user.id);
+  const maskedKeys = ownKeys.map(k => ({ ...k, secret: maskSecret(k.secret) }));
   res.json({ keys: maskedKeys });
 });
 
@@ -376,7 +417,8 @@ apiV1Router.post("/keys", authenticateRequest, (req: any, res) => {
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
     requestCount: 0,
-    rateLimit: rateLimit || 300
+    rateLimit: rateLimit || 300,
+    ownerId: req.user.id
   };
   apiKeys.unshift(newKey);
   res.json({ key: newKey });
@@ -384,7 +426,7 @@ apiV1Router.post("/keys", authenticateRequest, (req: any, res) => {
 
 apiV1Router.put("/keys/:id/revoke", authenticateRequest, (req: any, res) => {
   const { id } = req.params;
-  const keyIndex = apiKeys.findIndex(k => k.id === id);
+  const keyIndex = apiKeys.findIndex(k => k.id === id && k.ownerId === req.user.id);
   if (keyIndex === -1) {
     return res.status(404).json({ error: "API Key not found" });
   }
@@ -394,7 +436,7 @@ apiV1Router.put("/keys/:id/revoke", authenticateRequest, (req: any, res) => {
 
 apiV1Router.post("/keys/:id/rotate", authenticateRequest, (req: any, res) => {
   const { id } = req.params;
-  const keyIndex = apiKeys.findIndex(k => k.id === id);
+  const keyIndex = apiKeys.findIndex(k => k.id === id && k.ownerId === req.user.id);
   if (keyIndex === -1) {
     return res.status(404).json({ error: "API Key not found" });
   }
@@ -405,7 +447,8 @@ apiV1Router.post("/keys/:id/rotate", authenticateRequest, (req: any, res) => {
 
 // 3. Extraction Jobs
 apiV1Router.get("/jobs", authenticateRequest, (req: any, res) => {
-  res.json({ jobs: extractionJobs });
+  const ownJobs = extractionJobs.filter(j => j.userId === req.user.id);
+  res.json({ jobs: ownJobs });
 });
 
 // 4. Centerpiece: Gemini AI Transform Proxy
@@ -466,6 +509,7 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
     const durationMs = Date.now() - startTime;
     const mockJob = {
       id: "job_" + Math.random().toString(36).substr(2, 9),
+      userId: req.user.id,
       url,
       rawText: rawText ? (rawText.substring(0, 100) + "...") : undefined,
       schemaType,
@@ -529,6 +573,7 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
 
     const realJob = {
       id: "job_" + Math.random().toString(36).substr(2, 9),
+      userId: req.user.id,
       url,
       rawText: rawText ? (rawText.substring(0, 100) + "...") : undefined,
       schemaType,
@@ -542,13 +587,12 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
 
     extractionJobs.unshift(realJob);
 
-    if (apiKeys.length > 0) {
-      const activeKeys = apiKeys.filter(k => k.status === "active");
-      if (activeKeys.length > 0) {
-        activeKeys[0].requestCount += 1;
-        activeKeys[0].lastUsedAt = new Date().toISOString();
-      }
-    }
+    // Note: request-count/lastUsedAt tracking for the calling API key (if
+    // any) already happens once in authenticateRequest above; this used to
+    // additionally bump an arbitrary "first active key" here regardless of
+    // which key (or session) actually made the call, corrupting an unrelated
+    // tenant's usage stats. Removed rather than fixed, since it was already
+    // redundant with authenticateRequest's per-key tracking.
 
     res.json({
       success: true,
@@ -560,15 +604,17 @@ Return ONLY the valid, parsing-ready JSON object corresponding to the schema. Do
     console.error("Gemini Parsing Error:", err);
     res.status(500).json({
       error: "Intelligence engine failed to parse information.",
-      details: err.message
+      details: errorDetails(err)
     });
   }
 });
 
-// 5. Statistics Metrics Overview
+// 5. Statistics Metrics Overview - scoped to the caller's own keys, matching
+// /keys and /jobs; previously aggregated every tenant's keys globally.
 apiV1Router.get("/metrics", authenticateRequest, (req: any, res) => {
-  const activeKeysCount = apiKeys.filter(k => k.status === "active").length;
-  const totalReq = apiKeys.reduce((acc, k) => acc + k.requestCount, 0);
+  const ownKeys = apiKeys.filter(k => k.ownerId === req.user.id);
+  const activeKeysCount = ownKeys.filter(k => k.status === "active").length;
+  const totalReq = ownKeys.reduce((acc, k) => acc + k.requestCount, 0);
   res.json({
     metrics: {
       totalRequests: totalReq,
@@ -611,11 +657,13 @@ const investigationService = new InvestigationService([
   securityTxtConnector,
 ]);
 
-// Seed in-memory list tracking successful multi-source intelligence reports
+// Seed in-memory list tracking successful multi-source intelligence reports.
+// Attributed to the guest tenant, same rationale as the seeded extractionJobs
+// above: visible when browsing anonymously, not leaked to every other tenant.
 let investigationHistory: any[] = [
   {
     id: "inv_openai_981",
-    userId: "usr_sentinel_94921",
+    userId: "usr_guest",
     type: "domain",
     query: "openai.com",
     summary: "Investigation completed for openai.com. Confirmed defensive domain setup and active infrastructure.",
@@ -652,7 +700,7 @@ let investigationHistory: any[] = [
   },
   {
     id: "inv_example_711",
-    userId: "usr_sentinel_94921",
+    userId: "usr_guest",
     type: "domain",
     query: "example.com",
     summary: "Completed strategic posture scan of example.com. No active high-risk vulnerabilities found.",
@@ -682,7 +730,7 @@ let investigationHistory: any[] = [
   },
   {
     id: "inv_sec_994",
-    userId: "usr_sentinel_94921",
+    userId: "usr_guest",
     type: "email",
     query: "security@company.com",
     summary: "Scanned security contact record security@company.com.",
@@ -772,7 +820,7 @@ apiV1Router.get("/investigations/:jobId", authenticateRequest, (req: any, res) =
   const { jobId } = req.params;
   const job = investigationWorker.getJob(jobId);
 
-  if (!job) {
+  if (!job || job.userId !== req.user.id) {
     return res.status(404).json({ error: "Investigation job not found" });
   }
 
@@ -862,7 +910,7 @@ apiV1Router.post("/investigate", authenticateRequest, investigationCreationRateL
       console.error("Unified threat intelligence execution pipeline failure:", err);
       return res.status(500).json({
         error: "An internal orchestration error occurred while running the intelligence service.",
-        details: err.message,
+        details: errorDetails(err),
       });
     }
   }
@@ -882,7 +930,7 @@ apiV1Router.post("/investigate", authenticateRequest, investigationCreationRateL
     return res.status(200).json(result);
   } catch (err: any) {
     console.error("Sandbox investigation orchestration failure:", err);
-    return res.status(500).json({ error: "Failed to run sandbox investigation", details: err.message });
+    return res.status(500).json({ error: "Failed to run sandbox investigation", details: errorDetails(err) });
   }
 });
 
@@ -899,7 +947,7 @@ apiV1Router.post("/intelligence/analyze", authenticateRequest, async (req: any, 
     res.json(report);
   } catch (err: any) {
     console.error("AI Intelligence meta-analysis failure:", err);
-    res.status(500).json({ error: "Failed to analyze investigation", details: err.message });
+    res.status(500).json({ error: "Failed to analyze investigation", details: errorDetails(err) });
   }
 });
 
@@ -907,12 +955,14 @@ apiV1Router.post("/intelligence/analyze", authenticateRequest, async (req: any, 
 apiV1Router.get("/history", authenticateRequest, (req: any, res) => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
-  
+
+  const ownHistory = investigationHistory.filter(r => r.userId === req.user.id);
+
   const startIndex = (page - 1) * limit;
   const endIndex = page * limit;
-  
-  const paginatedHistory = investigationHistory.slice(startIndex, endIndex);
-  
+
+  const paginatedHistory = ownHistory.slice(startIndex, endIndex);
+
   const historyView = paginatedHistory.map(record => ({
     id: record.id,
     userId: record.userId,
@@ -927,19 +977,19 @@ apiV1Router.get("/history", authenticateRequest, (req: any, res) => {
   res.json({
     history: historyView,
     pagination: {
-      total: investigationHistory.length,
+      total: ownHistory.length,
       page,
       limit,
-      pages: Math.ceil(investigationHistory.length / limit)
+      pages: Math.ceil(ownHistory.length / limit)
     }
   });
 });
 
 // 9. Fetch Structured Scan Report
-apiV1Router.get("/reports/:id", authenticateRequest, (req, res) => {
+apiV1Router.get("/reports/:id", authenticateRequest, (req: any, res) => {
   const { id } = req.params;
-  
-  const historicalRecord = investigationHistory.find(r => r.id === id);
+
+  const historicalRecord = investigationHistory.find(r => r.id === id && r.userId === req.user.id);
   if (historicalRecord) {
     try {
       const parsedReport = JSON.parse(historicalRecord.resultJson);
@@ -950,7 +1000,7 @@ apiV1Router.get("/reports/:id", authenticateRequest, (req, res) => {
   }
 
   const activeJob = investigationWorker.getJob(id);
-  if (activeJob && activeJob.status === "completed" && activeJob.report) {
+  if (activeJob && activeJob.userId === req.user.id && activeJob.status === "completed" && activeJob.report) {
     return res.json(activeJob.report);
   }
 

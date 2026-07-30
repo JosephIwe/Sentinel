@@ -9,7 +9,7 @@ export const openApiSpec = {
   info: {
     title: "Sentinel Cyber Intelligence API",
     description: "Enterprise multi-source security scanners, OSINT correlation, and AI-driven cognitive threat reporting.",
-    version: "1.0.0",
+    version: "1.0.0-rc.1",
     contact: {
       name: "Sentinel SecOps Support",
       email: "buildwisegroupofcompany@gmail.com",
@@ -346,6 +346,183 @@ export const openApiSpec = {
         }
       }
     },
+    "/jobs": {
+      get: {
+        summary: "List Extraction Jobs",
+        description: "Returns structured schema-extraction jobs submitted via POST /playground/transform, scoped to the authenticated caller.",
+        operationId: "listExtractionJobs",
+        tags: ["Extraction Jobs"],
+        responses: {
+          "200": {
+            description: "Extraction jobs returned successfully.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    jobs: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/ExtractionJob" }
+                    }
+                  }
+                },
+                example: {
+                  jobs: [
+                    {
+                      id: "job_01",
+                      userId: "usr_guest",
+                      url: "https://news.ycombinator.com",
+                      schemaType: "Company Intelligence",
+                      schemaDefinition: "{\"properties\": {\"startupName\": \"string\", \"raisedAmount\": \"number\"}}",
+                      status: "completed",
+                      createdAt: "2026-07-11T04:10:00Z",
+                      tokensUsed: 1430,
+                      durationMs: 340,
+                      result: { startups: [{ name: "Supabase", raised: 80000000 }] }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/playground/transform": {
+      post: {
+        summary: "Extract Structured Data via Schema",
+        description: "Transforms raw text or a described public URL into structured JSON matching a caller-supplied field schema, using Gemini when configured or a deterministic simulated response otherwise. Records the result as an extraction job (see GET /jobs).",
+        operationId: "playgroundTransform",
+        tags: ["Extraction Jobs"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["schemaFields"],
+                properties: {
+                  url: { type: "string", description: "Public URL to describe/simulate extraction from. Either url or rawText is required." },
+                  rawText: { type: "string", description: "Raw source text to extract from. Either url or rawText is required." },
+                  schemaType: { type: "string", description: "Descriptive label for the extraction schema, e.g. 'Company Intelligence'." },
+                  schemaFields: {
+                    type: "array",
+                    description: "Field definitions the output JSON must match. Must be non-empty.",
+                    items: {
+                      type: "object",
+                      required: ["name", "type", "description"],
+                      properties: {
+                        name: { type: "string" },
+                        type: { type: "string", enum: ["string", "number", "boolean", "array", "object"] },
+                        description: { type: "string" }
+                      }
+                    }
+                  }
+                }
+              },
+              example: {
+                rawText: "Sentinel API offers a Free Tier and an Enterprise Tier.",
+                schemaType: "Product Pricing",
+                schemaFields: [
+                  { name: "planName", type: "string", description: "Name of the pricing plan" }
+                ]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Extraction completed (simulated if GEMINI_API_KEY is not configured, real otherwise).",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    simulated: { type: "boolean", description: "True when GEMINI_API_KEY is not configured and the result was deterministically simulated rather than produced by Gemini." },
+                    message: { type: "string", nullable: true },
+                    job: { $ref: "#/components/schemas/ExtractionJob" }
+                  }
+                },
+                example: {
+                  success: true,
+                  simulated: true,
+                  message: "Simulation completed (Gemini API key is not configured). Set GEMINI_API_KEY to enable real AI extractions.",
+                  job: {
+                    id: "job_9f2ac31",
+                    schemaType: "Product Pricing",
+                    schemaDefinition: "[{\"name\":\"planName\",\"type\":\"string\",\"description\":\"Name of the pricing plan\"}]",
+                    status: "completed",
+                    createdAt: "2026-07-28T04:05:00Z",
+                    tokensUsed: 420,
+                    durationMs: 12,
+                    result: { planName: "Extracted data for Name of the pricing plan" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest"
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized"
+          },
+          "500": {
+            $ref: "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      get: {
+        summary: "Get Usage Metrics",
+        description: "Returns aggregate request/latency/data-volume metrics for the authenticated caller's own API keys.",
+        operationId: "getMetrics",
+        tags: ["Metrics"],
+        responses: {
+          "200": {
+            description: "Metrics returned successfully.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    metrics: {
+                      type: "object",
+                      properties: {
+                        totalRequests: { type: "integer" },
+                        successRate: { type: "number" },
+                        avgLatency: { type: "number", description: "Milliseconds." },
+                        p99Latency: { type: "number", description: "Milliseconds." },
+                        activeKeys: { type: "integer" },
+                        dataExtractedBytes: { type: "integer" }
+                      }
+                    }
+                  }
+                },
+                example: {
+                  metrics: {
+                    totalRequests: 1240,
+                    successRate: 99.84,
+                    avgLatency: 312,
+                    p99Latency: 840,
+                    activeKeys: 2,
+                    dataExtractedBytes: 5113760
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/investigate": {
       post: {
         summary: "Run Synchronous Target Scan",
@@ -511,6 +688,59 @@ export const openApiSpec = {
           },
           "404": {
             $ref: "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/intelligence/analyze": {
+      post: {
+        summary: "Run AI Meta-Analysis on an Investigation Result",
+        description: "Synthesizes an executive summary, findings, and deterministic confidence/risk scores from an already-collected InvestigationResult, using Gemini when configured or a deterministic fallback otherwise. Does not run connectors itself - callers supply a result from POST /investigate or a completed job's report.",
+        operationId: "analyzeIntelligence",
+        tags: ["Intelligence Analysis"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["result"],
+                properties: {
+                  result: {
+                    $ref: "#/components/schemas/InvestigationResult",
+                    description: "Must include at least query and entities."
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Intelligence report synthesized successfully.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/IntelligenceReport" },
+                example: {
+                  summary: "Consolidated intelligence scan on \"example.com\" mapped 2 entities with a calculated risk index of 5%.",
+                  executiveSummary: "Cross-sensor evaluation resolved 2 unique identity nodes.",
+                  keyFindings: ["Verified Findings: Detected 2 entities across active sensors (WHOIS Registry Database, DNS Zone Resolver)."],
+                  riskScore: 5,
+                  confidence: 85,
+                  recommendations: ["No corrective actions needed at this time."],
+                  timeline: []
+                }
+              }
+            }
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest"
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized"
+          },
+          "500": {
+            $ref: "#/components/responses/InternalError"
           }
         }
       }
@@ -713,6 +943,38 @@ export const openApiSpec = {
           riskScore: { type: "integer", nullable: true },
           sources: { type: "array", items: { type: "object" } },
           evidences: { type: "array", items: { type: "object" } }
+        }
+      },
+      ExtractionJob: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          userId: { type: "string" },
+          url: { type: "string", nullable: true },
+          rawText: { type: "string", nullable: true },
+          schemaType: { type: "string" },
+          schemaDefinition: { type: "string", description: "JSON-encoded string of the requested schema fields." },
+          status: { type: "string", enum: ["completed", "processing", "failed"] },
+          createdAt: { type: "string", format: "date-time" },
+          tokensUsed: { type: "integer" },
+          durationMs: { type: "integer" },
+          result: { type: "object", description: "Extracted data matching the requested schema." }
+        }
+      },
+      IntelligenceReport: {
+        type: "object",
+        properties: {
+          summary: { type: "string" },
+          executiveSummary: { type: "string" },
+          keyFindings: { type: "array", items: { type: "string" } },
+          findings: { type: "array", items: { type: "object" }, nullable: true },
+          riskScore: { type: "integer" },
+          confidence: { type: "integer" },
+          recommendations: { type: "array", items: { type: "string" } },
+          timeline: { type: "array", items: { type: "object" } },
+          confidenceBreakdown: { type: "object", nullable: true },
+          riskBreakdown: { type: "object", nullable: true },
+          validationReport: { type: "object", nullable: true }
         }
       },
       ErrorResponse: {

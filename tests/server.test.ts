@@ -331,4 +331,112 @@ describe("server.ts HTTP API", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  // Regression tests for a critical, previously-unreported IDOR: every API
+  // key used to resolve to one shared identity (`usr_api_client`), so any
+  // key could see/mutate any other tenant's keys/jobs/history/reports. Each
+  // key is now scoped to the tenant that created it - these tests assert two
+  // distinct tenants (logged in under different sessions, each provisioning
+  // their own key) cannot see or mutate each other's resources.
+  describe("cross-tenant isolation", () => {
+    // Both tenants are provisioned once for the whole block (rather than per
+    // test) so these tests don't individually exhaust the per-IP rate limit
+    // shared with every other anonymous/session request in this file.
+    let tenantA: { agent: any; secret: string; keyId: string };
+    let tenantB: { agent: any; secret: string; keyId: string };
+
+    async function createKeyAsNewUser(email: string) {
+      const agent = request.agent(app);
+      await agent.post("/api/v1/auth/login").send({ email, name: "Tenant" });
+      const created = await agent.post("/api/v1/keys").send({ name: `Key for ${email}` });
+      return { agent, secret: created.body.key.secret as string, keyId: created.body.key.id as string };
+    }
+
+    beforeAll(async () => {
+      tenantA = await createKeyAsNewUser("iso-tenant-a@example.com");
+      tenantB = await createKeyAsNewUser("iso-tenant-b@example.com");
+    });
+
+    it("does not let one tenant's API key list another tenant's keys", async () => {
+      const listAsA = await request(app).get("/api/v1/keys").set("X-API-Key", tenantA.secret);
+      const idsSeenByA = listAsA.body.keys.map((k: any) => k.id);
+      expect(idsSeenByA).toContain(tenantA.keyId);
+      expect(idsSeenByA).not.toContain(tenantB.keyId);
+    });
+
+    it("returns 404 (not another tenant's key) when revoking someone else's key id, and leaves it usable", async () => {
+      const revokeAttempt = await request(app)
+        .put(`/api/v1/keys/${tenantB.keyId}/revoke`)
+        .set("X-API-Key", tenantA.secret);
+      expect(revokeAttempt.status).toBe(404);
+
+      const stillWorks = await request(app).get("/api/v1/keys").set("X-API-Key", tenantB.secret);
+      expect(stillWorks.status).toBe(200);
+    });
+
+    it("returns 404 (not another tenant's key) when rotating someone else's key id, and leaves the original secret valid", async () => {
+      const rotateAttempt = await request(app)
+        .post(`/api/v1/keys/${tenantB.keyId}/rotate`)
+        .set("X-API-Key", tenantA.secret);
+      expect(rotateAttempt.status).toBe(404);
+
+      const originalSecretStillWorks = await request(app).get("/api/v1/keys").set("X-API-Key", tenantB.secret);
+      expect(originalSecretStillWorks.status).toBe(200);
+    });
+
+    it("scopes /history and /reports/:id per tenant instead of sharing one global view", async () => {
+      // Seeded demo history/report records are attributed to the guest tenant.
+      const seededReportAsGuest = await request(app).get("/api/v1/reports/inv_example_711");
+      expect(seededReportAsGuest.status).toBe(200);
+
+      const seededReportAsTenantA = await tenantA.agent.get("/api/v1/reports/inv_example_711");
+      expect(seededReportAsTenantA.status).toBe(404);
+
+      const historyAsTenantA = await tenantA.agent.get("/api/v1/history");
+      expect(historyAsTenantA.body.history.find((h: any) => h.id === "inv_example_711")).toBeUndefined();
+    });
+
+    it("scopes GET /jobs to the caller's own extraction jobs", async () => {
+      const created = await tenantA.agent.post("/api/v1/playground/transform").send({
+        rawText: "Some raw text to extract from.",
+        schemaType: "Test Schema",
+        schemaFields: [{ name: "value", type: "string", description: "A test field" }],
+      });
+      expect(created.status).toBe(200);
+      const jobId = created.body.job.id;
+
+      const jobsAsB = await request(app).get("/api/v1/jobs").set("X-API-Key", tenantB.secret);
+      expect(jobsAsB.body.jobs.map((j: any) => j.id)).not.toContain(jobId);
+
+      const jobsAsA = await request(app).get("/api/v1/jobs").set("X-API-Key", tenantA.secret);
+      expect(jobsAsA.body.jobs.map((j: any) => j.id)).toContain(jobId);
+    });
+
+    it("scopes GET /investigations/:jobId per tenant, returning 404 for another tenant's job", async () => {
+      const createdJob = await tenantA.agent
+        .post("/api/v1/investigations")
+        .send({ type: "domain", value: "example.com" });
+      expect(createdJob.status).toBe(201);
+      const jobId = createdJob.body.jobId;
+
+      const asB = await request(app).get(`/api/v1/investigations/${jobId}`).set("X-API-Key", tenantB.secret);
+      expect(asB.status).toBe(404);
+
+      const asA = await request(app).get(`/api/v1/investigations/${jobId}`).set("X-API-Key", tenantA.secret);
+      expect(asA.status).toBe(200);
+      expect(asA.body.jobId).toBe(jobId);
+    });
+
+    it("scopes GET /metrics to the caller's own keys, not a global cross-tenant aggregate", async () => {
+      const metricsAsA = await request(app).get("/api/v1/metrics").set("X-API-Key", tenantA.secret);
+      const metricsAsB = await request(app).get("/api/v1/metrics").set("X-API-Key", tenantB.secret);
+
+      // Each tenant owns exactly one key. Dozens of other keys are created
+      // by other describe blocks elsewhere in this file; if /metrics still
+      // aggregated globally (the old bug) activeKeys would reflect all of
+      // them, not just the caller's own.
+      expect(metricsAsA.body.metrics.activeKeys).toBe(1);
+      expect(metricsAsB.body.metrics.activeKeys).toBe(1);
+    });
+  });
 });

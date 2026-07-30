@@ -4,75 +4,74 @@ _Canonical roadmap. The root `ROADMAP.md` mirrors a summary of this file for dis
 
 ## Status
 
-A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-milestone plan below, replacing the earlier "close the RELEASE_CHECKLIST recommendations" framing with a severity-ordered plan that leads with a critical security finding. **This plan is proposed and awaiting explicit user approval before implementation begins** (Phase 5 has not started).
+A full-repository audit (2026-07-28, see `docs/KNOWN_ISSUES.md`) produced the 7-milestone plan below, replacing the earlier "close the RELEASE_CHECKLIST recommendations" framing with a severity-ordered plan that leads with a critical security finding. **The roadmap was approved by the user on 2026-07-28. Milestones 0, 1, and 2 are complete** (see below); Milestone 3 is next and has not started.
 
 ---
 
-## Milestone 0 — Security & Trust Emergency Fixes
+## Milestone 0 — Security & Trust Emergency Fixes ✅ COMPLETE (2026-07-28)
 
 **Objective**: close every Critical/High-severity issue from `docs/KNOWN_ISSUES.md`, led by the cross-tenant IDOR — this is the one thing that should not wait behind anything else.
 
-**Tasks**:
-- Design and implement real per-tenant identity for API-key auth (see `docs/TECH_DECISIONS.md`'s "Open architectural gap" note — this needs a deliberate design choice, not a bolt-on filter).
-- Add ownership checks to `GET/PUT /keys*`, `GET /jobs`, `GET /history`, `GET /reports/:id`, `GET /investigations/:jobId`.
-- Fix `utils/observability.ts`'s `errorHandler` to gate `err.message` behind `NODE_ENV !== "production"` (matching the same fix already needed in `server.ts`'s 4 inline catch blocks — do both together).
-- Fix `scoring.ts`'s hardcoded absolute-year thresholds to compute relative to `Date.now()`.
-- Either wire the Dashboard's usage chart to real `metrics` data or remove it — it must not show fake data as if live.
-- Implement real job cancellation (thread an `AbortSignal`/cancellation token into `investigate()` and the Gemini call, not just a status flag).
+**Tasks** (all complete — see `docs/CHANGELOG_AI.md` for full detail and `docs/KNOWN_ISSUES.md`'s "Already fixed" section):
+- [x] Designed and implemented real per-tenant identity for API-key auth: each key now carries its own `ownerId`, resolved into `req.user.id` in `authenticateRequest` instead of the old shared `usr_api_client`.
+- [x] Added ownership checks to `GET/PUT/POST /keys*`, `GET /jobs`, `GET /history`, `GET /reports/:id`, `GET /investigations/:jobId`, and `GET /metrics` (found to have the same cross-tenant aggregation problem while fixing the rest).
+- [x] Fixed `utils/observability.ts`'s `errorHandler` to gate `err.message` behind `NODE_ENV !== "production"`, matching the same fix applied to `server.ts`'s 4 inline catch blocks via a shared `errorDetails()` helper.
+- [x] Fixed `scoring.ts`'s hardcoded absolute-year thresholds (`risk_newly_registered`/`risk_long_established`) to compute domain age relative to `Date.now()`.
+- [x] Replaced the Dashboard's fake usage chart with an honest "not tracked yet" placeholder (no real per-hour telemetry exists to wire it to; fabricating one would repeat the exact problem being fixed).
+- [x] Implemented real job cancellation: an `AbortSignal` is now threaded through `InvestigationService.investigate()` and `IntelligenceService.analyze()`, so not-yet-started connectors are skipped, an in-flight GitHub-discovery fetch is genuinely aborted, and the billed Gemini call is skipped in favor of the free deterministic fallback when cancellation lands first. Also fixed a related bug where a job cancelled before its deferred start got silently overwritten back to `"running"`.
+- [x] Bonus fix found while implementing the above (not on the original list): removed a redundant, incorrect stat-tracking block in `/playground/transform` that bumped an arbitrary "first active key's" usage counters regardless of who actually called it.
 
-**Dependencies**: none — can start immediately once approved.
+**Verification**: `npm run test` (240/240 passing, including a new `cross-tenant isolation` describe block in `tests/server.test.ts` and a new `tests/observability.test.ts`), `npm run lint` (clean), `npm run build` (succeeds).
 
-**Risks**: the identity-model change touches `authenticateRequest` broadly and every route that currently assumes a single shared user; must not break existing API-key holders' basic auth flow. Needs new tests written against the final shape (coordinate with Milestone 3).
+**Risks encountered**: TypeScript's control-flow narrowing initially broke on removing the `(job.status as string)` cast in `investigationWorker.ts` — the cast wasn't dead code as originally assessed in the audit, it was working around a real narrowing limitation (TS can't see `cancelJob` mutating the job object asynchronously via the shared map). Fixed properly with an `isCancelled()` helper that re-reads through a fresh parameter binding, rather than reintroducing an unsafe cast.
 
-**Estimated complexity**: Large overall (the identity redesign is the hard part), but each individual task is S–M in isolation.
-
-**Expected outcome**: no cross-tenant data exposure; no error-message leakage; scoring stays correct as time passes; nothing in the UI shows fabricated data as real; cancelled jobs actually stop.
+**Deferred to Milestone 1** (still open, downgraded from the original "High" bucket now that the Critical item and 4 of the original 7 High items are fixed): mobile nav gap, Dashboard/Playground disconnect (`onAddJob` dead code), `RelationshipEdge` shape mismatch.
 
 ---
 
-## Milestone 1 — Frontend Correctness & Functional Gaps
+## Milestone 1 — Frontend Correctness & Functional Gaps ✅ COMPLETE (2026-07-28)
 
 **Objective**: fix real, user-visible functional bugs.
 
-**Tasks**:
-- Wire `onAddJob` so Dashboard reflects real Playground activity (or remove the dead prop/handler pair if the two views are meant to stay separate — make it a deliberate choice either way).
-- Resolve the `RelationshipEdge` shape mismatch by importing the type from `src/types.ts` in both `PlaygroundView.tsx` and `InvestigationReport.tsx` instead of local redefinitions; verify against the real API response which shape (`from/to` vs `source/target`) is actually correct.
-- Add a mobile navigation fallback (hamburger or equivalent) for viewports below `md:`.
-- Surface visible error states for `App.tsx`'s login/key-management handlers and the localStorage `JSON.parse` failure sites in `HistoryView.tsx`/`PlaygroundView.tsx`.
-- Fix the "BREIFING" typo in the print report.
-- Decide on and implement one path for reconciling the two disconnected history data models (server `extractionJobs` vs. localStorage history) — at minimum, share one shape between them even if they stay conceptually separate.
+**Tasks** (all complete — see `docs/CHANGELOG_AI.md` for full detail and `docs/KNOWN_ISSUES.md`'s "Already fixed" section):
+- [x] Resolved the `onAddJob` dead code: rather than force a fake mapping, removed it. Playground's UI runs investigations via `/api/investigations`, not the `/playground/transform` (`ExtractionJob`) flow `onAddJob` assumed — the two were never actually the same feature. Relabeled the Dashboard's "Extraction History" tab to clarify what it shows (API/SDK-driven schema extraction) versus "Investigation History" (Playground-run investigations).
+- [x] Resolved the `RelationshipEdge` shape mismatch by importing `Relationship`/`Entity` from `src/types.ts` in both `PlaygroundView.tsx` and `InvestigationReport.tsx`. The real API shape is `source`/`target` (confirmed against `server.ts`'s responses and `EntityGraph.tsx`'s existing correct usage) — `PlaygroundView.tsx`'s `from`/`to` was the broken one. Also fixed a second instance of the same bug class found in the process: `entity.confidence`/`entity.details` don't exist on the real `Entity` type either.
+- [x] Added a mobile navigation fallback: hamburger toggle + slide-down panel in `Layout.tsx`, covering all the same destinations as the desktop nav.
+- [x] Surfaced visible error states for `App.tsx`'s login/key-management handlers (worse than console-log-only — non-OK responses previously hit no branch at all) via `AuthView.tsx` and `DashboardView.tsx`'s existing local-error-state patterns.
+- [x] Fixed the "BREIFING" typo in the print report.
+- [x] Reconciled the two disconnected history data models — not by sharing a type, but by eliminating the duplication entirely: `HistoryView.tsx` now reads real per-tenant server history (`GET /api/history`, correctly scoped since Milestone 0) instead of an unscoped `localStorage` copy, and `PlaygroundView.tsx`'s redundant `saveToHistory()` was removed since the server already persists completions.
 
-**Dependencies**: independent of Milestone 0, can run in parallel.
+**Verification**: `npm run test` (240/240 passing — no new automated tests added this milestone, see Risks below), `npm run lint` (clean), `npm run build` (succeeds), plus a manual Playwright smoke-test pass against the running dev server (mobile hamburger nav, login → dashboard → key creation, investigation → relationships tab rendering real `source`/`target` values not `undefined`, and a full history-restore round trip) with screenshots reviewed.
 
-**Risks**: the history-model reconciliation could balloon into a bigger redesign if scoped loosely — recommend scoping to "share one type, not necessarily one store" unless product wants a bigger unification.
+**Risks encountered**: none blocking. The history-model fix ended up being a full elimination rather than the "share one type" fallback the original task description allowed for, since Milestone 0's ownership fixes had already made the server-side data safe to use directly — worth noting for future milestones that some Milestone 1-era workarounds may already be obsolete once earlier milestones land.
 
-**Estimated complexity**: Medium.
-
-**Expected outcome**: UI behaves consistently with what it visually promises; no silently-dead data paths.
+**Deferred**: automated frontend test coverage for these changes is still Milestone 3's job (no `@testing-library/react` yet); this milestone's UI verification was manual/visual only.
 
 ---
 
-## Milestone 2 — Release Hygiene (CI, Docker, OpenAPI, docs)
+## Milestone 2 — Release Engineering & Project Readiness ✅ COMPLETE (2026-07-28)
 
 **Objective**: everything needed to responsibly cut a real `v1.0.0` tag and accept outside contributions.
 
-**Tasks**:
-- Add `.github/workflows/ci.yml` (`npm ci && npm run lint && npm run test` on push/PR).
-- Add a `Dockerfile` matching (and validating) `DEPLOYMENT.md`'s existing inline example.
-- Complete `src/api/openapi.ts` for `/jobs`, `/playground/transform`, `/metrics`, `/intelligence/analyze`.
-- Run `npm audit fix` for the postcss advisory (verify it doesn't break the Tailwind v4 build).
-- Fix `SECURITY.md`'s contact email and `CONTRIBUTING.md`'s placeholder clone URL.
-- Add `"engines": {"node": ">=18"}` to `package.json`; fix the `/version` vs `package.json` version drift.
-- Clean up `vite.config.ts`'s leftover AI-Studio-era comments, the unused `@/*` tsconfig alias, and the stale `npm run clean` target.
-- Delete (not just exclude) the dead legacy connectors (`src/connectors/google.ts`, `news.ts`, `github.ts`) once `tests/legacy-connectors.test.ts` is retired or repointed — removes residual attack surface entirely rather than relying on `server.ts` never wiring them in.
+This milestone was executed under a tighter, explicitly-scoped instruction set than originally planned above: no architecture/auth/investigation/scoring/evidence/validation/connector changes, minimal focused commits only. Two originally-planned items were consequently deferred rather than done (see "Deferred" below), and one item (dead-code removal) was narrowed in scope for the same reason.
 
-**Dependencies**: do this *after* Milestone 0 so CI enforces the security fixes going forward, not before.
+**Tasks** (all complete):
+- [x] Added `.github/workflows/ci.yml` running `npm ci`, `npm run lint`, `npm test`, `npm run build` on push/PR (Node 18, matching the documented minimum).
+- [x] Added a production `Dockerfile` (matching `DEPLOYMENT.md`'s documented layout, with `--only=production` modernized to `--omit=dev`) and `.dockerignore`.
+- [x] Completed `src/api/openapi.ts` for `/jobs`, `/playground/transform`, `/metrics`, `/intelligence/analyze` — all four now documented with real request/response shapes verified against `server.ts`, plus new `ExtractionJob`/`IntelligenceReport` schemas. Verified live: the built server serves all 15 paths at `/api/v1/openapi.json` and Swagger UI renders at `/docs`.
+- [x] Ran `npm audit fix` for the postcss advisory (patch-level bump, 8.5.17 → 8.5.24, zero breaking changes, `package-lock.json`-only diff) — `npm audit` now reports 0 vulnerabilities.
+- [x] Fixed `SECURITY.md`'s unverified email (replaced with GitHub Security Advisories, a real channel tied to this repo, rather than guessing a replacement address), `CONTRIBUTING.md`'s placeholder clone URL, and `package.json`'s stale `repository`/`bugs`/`homepage` URLs (all previously pointed at a placeholder org that isn't this repo).
+- [x] Fixed version drift: `GET /version` and the OpenAPI spec's `info.version` both hardcoded `"1.0.0"` instead of the real `"1.0.0-rc.1"` — now consistent across `package.json`, `VERSION.md`, `README.md`, `server.ts`, `src/api/openapi.ts`, `DEPLOYMENT.md`'s example response, and both SDKs' version comments.
+- [x] Removed confirmed dead code within the session's constraints: the unused `"@/*"` tsconfig path alias (zero usages repo-wide) and the stale `npm run clean` script (referenced a `server.js` output the build hasn't produced since it was reorganized to `dist/server.cjs`).
+- [x] Cleaned documentation: fixed the placeholders above, fixed a genuinely broken `CHANGELOG.md` entry that had been truncated mid-sentence since a much earlier commit (removed rather than guessed at a completion, since inventing the missing text wasn't defensible), added `SECURITYTXT_CACHE_TTL_MS`/`APP_ACCESS_CODE` to `DEPLOYMENT.md`'s environment variable list (present in `.env.example`, undocumented), and backfilled `CHANGELOG.md`'s `[Unreleased]` section with the security/frontend fixes from Milestones 0-1 and this milestone's release-engineering additions, none of which had been recorded there yet.
 
-**Risks**: low, mostly additive; deleting legacy connectors requires updating/removing their test file first.
+**Deferred, not done this session** (both explicitly out of scope under this session's "do not modify connectors/validation" and "keep minimal" constraints, not overlooked):
+- Deleting the dead legacy connectors (`src/connectors/google.ts`, `news.ts`, `github.ts`) — this session's instructions explicitly excluded touching `connectors`. Still real dead code; still a legitimate future cleanup, just not this session's to do.
+- Adding `"engines": {"node": ">=18"}` to `package.json` and cleaning up `vite.config.ts`'s AI-Studio-era comments — not part of this session's 7 explicit objectives; skipped to honor "do not introduce unrelated improvements."
 
-**Estimated complexity**: Small–Medium.
+**Verification**: `npm test` (240/240), `npm run lint` (clean), `npm run build` (succeeds), `npm audit` (0 vulnerabilities), CI workflow YAML validated (parses correctly, structurally sound, mirrors the exact locally-passing npm scripts). **`docker build` itself could not be completed** — this sandbox's egress policy explicitly denies `production.cloudfront.docker.com` (Docker Hub's CDN backend) with a 403, and this session's proxy policy is to report that rather than route around it. Verified everything short of the actual `docker build` instead: `npm ci --omit=dev` (the image's exact runtime-stage install command) succeeds cleanly, and `node dist/server.cjs` (the image's exact `CMD`) boots and correctly serves `/health`, `/version`, and the frontend when run standalone with only production dependencies installed. The Dockerfile itself is a standard, widely-used pattern (`node:18-alpine`, multi-stage build) with no reason to expect it would fail in an environment with normal registry access (e.g. real CI). **Also discovered, out of scope to fix**: `server.ts` hardcodes `PORT = 3000` and does not actually read `process.env.PORT`, despite `DEPLOYMENT.md` and the Dockerfile both documenting `PORT` as configurable — it happens to work today only because the documented default matches the hardcoded value.
 
-**Expected outcome**: a real, CI-gated `v1.0.0` tag; deployment docs that are actually validated; no known dependency vulnerabilities.
+**Expected outcome achieved**: CI now gates every PR on lint/test/build; deployment has a real, mostly-verified container path; the API surface is fully documented; the dependency tree has no known vulnerabilities; version numbers agree everywhere; and the project's own documentation no longer contains placeholder URLs, an unverifiable contact, or a corrupted changelog entry.
 
 ---
 

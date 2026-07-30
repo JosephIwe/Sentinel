@@ -111,9 +111,12 @@ export function errorHandler(err: any, req: any, res: Response, next: NextFuncti
     message: err.message
   });
 
+  const isProduction = process.env.NODE_ENV === "production";
   res.status(res.statusCode === 200 ? 500 : res.statusCode).json({
     error: "Internal Server Error",
-    message: err.message || "An unexpected error occurred on the secure gateway.",
+    message: isProduction
+      ? "An unexpected error occurred on the secure gateway."
+      : err.message || "An unexpected error occurred on the secure gateway.",
     requestId
   });
 }

@@ -67,12 +67,12 @@ Sentinel is an API-first threat-intelligence/OSINT orchestration platform. Given
 | Language | TypeScript, ES2022 target | `tsc --noEmit` clean |
 | Backend | Express 4, Node.js, single process | bundled to CJS via esbuild |
 | Frontend | React 19, Vite 6, Tailwind CSS 4 | served from the same process/port |
-| AI | Google Gemini (`@google/genai`) | model hardcoded, not env-configurable (Known Issues #32) |
-| Testing | Vitest 4, Supertest | 229 tests, backend-heavy, zero frontend component tests |
+| AI | Google Gemini (`@google/genai`) | model hardcoded, not env-configurable (see `docs/KNOWN_ISSUES.md`) |
+| Testing | Vitest 4, Supertest | 240 tests, backend-heavy, zero frontend component tests |
 | Auth | HMAC-signed session cookies + API-key headers | no password/OTP — explicit demo-mode design |
 | Persistence | None — in-memory only | disclosed limitation, not yet started |
 
-Origin note: `vite.config.ts` still carries leftover comments referencing "AI Studio" and a `DISABLE_HMR` flag — the project was scaffolded from a Google AI Studio template and this residue was never fully cleaned up (Known Issues #34).
+Origin note: `vite.config.ts` still carries leftover comments referencing "AI Studio" and a `DISABLE_HMR` flag — the project was scaffolded from a Google AI Studio template and this residue was never fully cleaned up (see `docs/KNOWN_ISSUES.md`).
 
 ## Folder structure
 
@@ -91,18 +91,18 @@ Sentinel/
 │   │                               #   explicitly excluded from the live pipeline)
 │   ├── services/                   # investigation, investigationWorker, intelligence,
 │   │                               #   validation, scoring, entityResolution
-│   ├── types.ts                    # Shared domain types (some components redefine
-│   │                               #   these locally instead of importing — Known Issues #8)
+│   ├── types.ts                    # Shared domain types (canonical source — components
+│   │                               #   import from here as of Milestone 1)
 │   └── utils/                      # Frontend-facing validation, entityMatcher, reliability,
 │                                    #   logger (all clean, well-tested)
 ├── utils/                          # Server-side: session.ts, rate-limiter.ts,
 │                                    #   observability.ts, betaGate.ts, ssrfGuard duplicate*
 ├── sdks/                           # TypeScript & Python clients — cover core investigation
 │                                    #   flows only, not auth/keys/jobs/playground/metrics
-└── tests/                          # 20 Vitest files, backend/service-heavy
+└── tests/                          # 21 Vitest files, backend/service-heavy
 ```
 
-\* `src/utils/validation.ts` duplicates `utils/validation.ts`'s logic with a different signature and is unused dead code (Known Issues #24).
+\* `src/utils/validation.ts` duplicates `utils/validation.ts`'s logic with a different signature and is unused dead code (see `docs/KNOWN_ISSUES.md`).
 
 ## Existing features
 
@@ -121,12 +121,10 @@ Sentinel/
 
 ## Unfinished / partially wired work
 
-- Dashboard's extraction-log/metrics tab never reflects real Playground activity (`onAddJob` prop wired but never called).
-- Dashboard's "Ingress Distribution (24h)" chart is hardcoded fake data, not connected to real metrics.
-- Two separate, unreconciled "investigation history" data models (server-side `extractionJobs` vs. localStorage-backed history) with different shapes.
-- Job cancellation flips a status flag but doesn't abort in-flight connector/Gemini work.
-- No persistent backing store — everything resets on restart.
-- No CI, no Dockerfile (despite `DEPLOYMENT.md` describing one), no mobile navigation below 768px.
+- No persistent backing store — API keys, history, and job state reset on restart.
+- No automated React component tests; several backend coverage gaps remain.
+- Accessibility gaps (unlabeled inputs, missing ARIA tab semantics, very small text).
+- Three dead legacy fabricated-data connectors still present in the tree, excluded from the live pipeline but not deleted.
 
 Full detail, severity, and file:line citations: `docs/KNOWN_ISSUES.md`.
 
@@ -140,8 +138,8 @@ Full detail, severity, and file:line citations: `docs/KNOWN_ISSUES.md`.
 
 ## Authentication
 
-Two independent paths, not fully unified (see Known Issues #1, the critical IDOR finding):
-- **API key** (`X-API-Key` header or `Authorization: Bearer`) → resolves to one **shared** identity (`usr_api_client`) for every key holder.
+Two independent paths, both resolving to a per-tenant identity on `req.user` since Milestone 0:
+- **API key** (`X-API-Key` header or `Authorization: Bearer`) → resolves to the key's own `ownerId`, set at key-creation time. (Before Milestone 0 every key resolved to one shared `usr_api_client` identity, which was the root cause of a critical cross-tenant IDOR — see `docs/KNOWN_ISSUES.md`'s "Already fixed" section.)
 - **Session cookie** — HMAC-SHA256 signed, HttpOnly, SameSite=Lax, `timingSafeEqual` verification (`utils/session.ts`), created by `/auth/login`, which accepts any self-asserted email/name with **no password or verification** — documented in-code as intentional demo behavior, not a regression.
 - Falls back to a `GUEST_USER` identity if neither is present, for routes that allow it.
 
@@ -152,6 +150,6 @@ None. API keys, investigation history, and async job state are all in-memory (`s
 ## Build & deployment
 
 - `npm run build` → `vite build` (client) + `esbuild server.ts --bundle --platform=node --format=cjs` (server) → `dist/`.
-- `npm run start` runs `dist/server.cjs`.
-- Verified working as of this audit: build succeeds (397kB JS gzip 101.5kB, 242kB server bundle), `tsc --noEmit` clean, 229/229 tests pass.
-- No Dockerfile exists despite `DEPLOYMENT.md` including its own inline Dockerfile example. No CI workflow exists at all.
+- `npm run start` runs `dist/server.cjs`. The listen port honors `process.env.PORT`, defaulting to `3000`.
+- Verified working: build succeeds (~399kB JS gzip ~102kB, ~257kB server bundle), `tsc --noEmit` clean, 240/240 tests pass.
+- A production multi-stage `Dockerfile` and `.dockerignore` are in the repo root; CI runs lint/test/build on push/PR via `.github/workflows/ci.yml`.

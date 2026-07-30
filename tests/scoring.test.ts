@@ -200,16 +200,29 @@ describe("ScoringService", () => {
       expect(service.calculateRisk(viaText).evaluations.find(e => e.id === "risk_missing_security")?.matched).toBe(true);
     });
 
-    it("flags risk_newly_registered for WHOIS creation dates in or after 2024", () => {
+    it("flags risk_newly_registered for a WHOIS creation date under 2 years old, computed relative to now", () => {
+      const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
       const recent = makeResult({
-        evidences: [makeEvidence({ id: "ev_whois_record_match", rawData: { registered: "2024-06-01" } })],
+        evidences: [makeEvidence({ id: "ev_whois_record_match", rawData: { registered: oneYearAgo } })],
       });
       expect(service.calculateRisk(recent).evaluations.find(e => e.id === "risk_newly_registered")?.matched).toBe(true);
 
+      const tenYearsAgo = new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000).toISOString();
       const old = makeResult({
-        evidences: [makeEvidence({ id: "ev_whois_record_match", rawData: { registered: "2010-06-01" } })],
+        evidences: [makeEvidence({ id: "ev_whois_record_match", rawData: { registered: tenYearsAgo } })],
       });
       expect(service.calculateRisk(old).evaluations.find(e => e.id === "risk_newly_registered")?.matched).toBe(false);
+    });
+
+    it("does not keep flagging risk_newly_registered once a domain ages past 2 years (regression test for the hardcoded-year bug)", () => {
+      // A domain registered "2024-06-01" was hardcoded as always-newly-registered
+      // regardless of how much time had passed since. Confirm the rule is now
+      // computed relative to the current date instead of a fixed calendar year.
+      const threeYearsAgo = new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString();
+      const result = makeResult({
+        evidences: [makeEvidence({ id: "ev_whois_record_match", rawData: { registered: threeYearsAgo } })],
+      });
+      expect(service.calculateRisk(result).evaluations.find(e => e.id === "risk_newly_registered")?.matched).toBe(false);
     });
 
     it("flags risk_disposable_email from the query term or evidence content", () => {
@@ -252,11 +265,18 @@ describe("ScoringService", () => {
       expect(service.calculateRisk(lowDensity).evaluations.find(e => e.id === "risk_unresolved_findings")?.matched).toBe(false);
     });
 
-    it("flags risk_long_established for WHOIS creation dates before 2018", () => {
+    it("flags risk_long_established for a WHOIS creation date over 5 years old, computed relative to now", () => {
+      const twentyYearsAgo = new Date(Date.now() - 20 * 365 * 24 * 60 * 60 * 1000).toISOString();
       const result = makeResult({
-        evidences: [makeEvidence({ id: "ev_whois_record_match", rawData: { registered: "2005-01-01" } })],
+        evidences: [makeEvidence({ id: "ev_whois_record_match", rawData: { registered: twentyYearsAgo } })],
       });
       expect(service.calculateRisk(result).evaluations.find(e => e.id === "risk_long_established")?.matched).toBe(true);
+
+      const threeYearsAgo = new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString();
+      const notYetEstablished = makeResult({
+        evidences: [makeEvidence({ id: "ev_whois_record_match", rawData: { registered: threeYearsAgo } })],
+      });
+      expect(service.calculateRisk(notYetEstablished).evaluations.find(e => e.id === "risk_long_established")?.matched).toBe(false);
     });
 
     it("flags risk_verified_org when rawData marks an Organization type", () => {

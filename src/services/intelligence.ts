@@ -29,11 +29,14 @@ export class IntelligenceService {
    * falling back to a deterministic baseline generator if Gemini is offline or unconfigured.
    * 
    * @param result - The output of the parallel investigation engine
+   * @param signal - Optional AbortSignal. If already aborted when this runs,
+   *   the (billed) Gemini call is skipped entirely in favor of the free
+   *   deterministic fallback, so a cancelled job doesn't spend AI quota.
    */
-  public async analyze(result: InvestigationResult): Promise<IntelligenceReport> {
+  public async analyze(result: InvestigationResult, signal?: AbortSignal): Promise<IntelligenceReport> {
     const validationService = new ValidationService();
     const cleanedResult = validationService.preValidate(result);
-    
+
     // Mutate the incoming result so that caller has the cleaned evidences and entities
     result.evidences = cleanedResult.evidences;
     result.entities = cleanedResult.entities;
@@ -41,8 +44,12 @@ export class IntelligenceService {
 
     const aiClient = this.aiClient || this.getEnvAiClient();
 
-    if (!aiClient) {
-      console.warn("IntelligenceService: GEMINI_API_KEY not configured. Falling back to deterministic summary.");
+    if (!aiClient || signal?.aborted) {
+      if (signal?.aborted) {
+        console.warn("IntelligenceService: investigation was cancelled before AI synthesis started. Skipping Gemini call.");
+      } else {
+        console.warn("IntelligenceService: GEMINI_API_KEY not configured. Falling back to deterministic summary.");
+      }
       const fallback = this.getDeterministicFallback(result);
       const postValidationResult = validationService.postValidate(result, fallback);
       return postValidationResult.report;

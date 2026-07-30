@@ -2,7 +2,10 @@ import React, { useState } from "react";
 import { Shield, Sparkles, Mail, Building, User as UserIcon, ArrowRight, Info } from "lucide-react";
 
 interface AuthViewProps {
-  onLoginSuccess: (email: string, name: string, companyName: string) => void;
+  // Returns true on success, false (or a message) on failure, so this view
+  // can show the real outcome instead of assuming success once the request
+  // is sent.
+  onLoginSuccess: (email: string, name: string, companyName: string) => Promise<boolean | string>;
 }
 
 export default function AuthView({ onLoginSuccess }: AuthViewProps) {
@@ -12,36 +15,32 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const attemptLogin = async (loginEmail: string, loginName: string, loginCompany: string) => {
+    setError("");
+    setIsSubmitting(true);
+    try {
+      const result = await onLoginSuccess(loginEmail, loginName, loginCompany);
+      if (result !== true) {
+        setError(typeof result === "string" ? result : "Login failed. Please try again.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Login failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
       setError("Please provide a valid developer email.");
       return;
     }
-    setError("");
-    setIsSubmitting(true);
-    
-    // Mimic secure server token transmission
-    setTimeout(() => {
-      onLoginSuccess(
-        email, 
-        name || "Developer Member", 
-        companyName || "Sentinel Partner Corp"
-      );
-      setIsSubmitting(false);
-    }, 600);
+    attemptLogin(email, name || "Developer Member", companyName || "Sentinel Partner Corp");
   };
 
   const handleDemoLogin = () => {
-    setIsSubmitting(true);
-    setTimeout(() => {
-      onLoginSuccess(
-        "staff.engineer@sentinelapi.dev",
-        "Staff Engineer Dev",
-        "Sentinel Tech Corp"
-      );
-      setIsSubmitting(false);
-    }, 400);
+    attemptLogin("staff.engineer@sentinelapi.dev", "Staff Engineer Dev", "Sentinel Tech Corp");
   };
 
   return (
