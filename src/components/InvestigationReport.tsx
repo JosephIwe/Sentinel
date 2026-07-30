@@ -2749,12 +2749,210 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* HTTP Security Headers Section */}
+          {(() => {
+            const headersStatus = response.connectorStatuses?.find(
+              (s: any) => s.name === "HTTP Security Headers"
+            );
+            if (!headersStatus) return null;
+
+            const headerEvidences = (response.evidences || []).filter(ev => ev.id?.startsWith("ev_headers_"));
+            const presentEv = headerEvidences.find(ev => ev.id === "ev_headers_present");
+            const missingEv = headerEvidences.find(ev => ev.id === "ev_headers_missing");
+            const observationsEv = headerEvidences.find(ev => ev.id === "ev_headers_observations");
+            const disclosureEv = headerEvidences.find(ev => ev.id === "ev_headers_disclosure");
+            const found = headersStatus.status === "SUCCESS" && headerEvidences.length > 0;
+            const diagnostics =
+              presentEv?.rawData?.diagnostics ||
+              missingEv?.rawData?.diagnostics ||
+              observationsEv?.rawData?.diagnostics;
+
+            const present: any[] = presentEv?.rawData?.present || [];
+            const missing: any[] = missingEv?.rawData?.missing || [];
+            const observations: any[] = observationsEv?.rawData?.observations || [];
+            const disclosures: any[] = disclosureEv?.rawData?.disclosures || [];
+            const securityPresent = present.filter((h: any) => h.importance === "SECURITY");
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="http-security-headers-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <Shield className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>14. HTTP Security Headers</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        found
+                          ? missing.length === 0
+                            ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                            : "text-amber-400 bg-amber-500/10 border border-amber-500/20"
+                          : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {found
+                        ? `${securityPresent.length} PRESENT · ${missing.length} ABSENT`
+                        : headersStatus.status}
+                    </span>
+                  </div>
+
+                  {!found ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {headersStatus.status === "ERROR"
+                        ? `HTTP security headers could not be inspected: ${(headersStatus.error || "the target was unreachable.").replace(/\.*$/, ".")}`
+                        : "The target returned none of the inspected HTTP security headers."}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Summary tiles */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Security Headers</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {securityPresent.length} / {securityPresent.length + missing.length}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Observations</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{observations.length}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Disclosure Headers</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{disclosures.length}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">HTTP Status</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {diagnostics?.httpStatus ?? "—"}
+                            {diagnostics?.redirected ? " (redirected)" : ""}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Present headers and their values */}
+                      {present.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Headers Present
+                          </span>
+                          <table className="w-full text-left border-collapse min-w-[560px]">
+                            <thead>
+                              <tr className="border-b border-neutral-800/80 print:border-neutral-200">
+                                <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Header</th>
+                                <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Kind</th>
+                                <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2">Value</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {present.map((h: any, idx: number) => (
+                                <tr key={`${h.name}-${idx}`} className="border-b border-neutral-900/80 print:border-neutral-100 last:border-0">
+                                  <td className="text-xs text-neutral-200 print:text-black font-mono py-2 pr-3 align-top whitespace-nowrap">{h.name}</td>
+                                  <td className="text-[10px] font-mono py-2 pr-3 align-top">
+                                    <span
+                                      className={
+                                        h.importance === "DISCLOSURE"
+                                          ? "text-amber-400"
+                                          : h.importance === "SECURITY"
+                                          ? "text-emerald-400"
+                                          : "text-neutral-500"
+                                      }
+                                    >
+                                      {h.importance}
+                                    </span>
+                                  </td>
+                                  <td className="text-xs text-neutral-400 print:text-black font-mono py-2 break-all">{h.value}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Missing security headers */}
+                      {missing.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Security Headers Absent
+                          </span>
+                          <div className="space-y-1">
+                            {missing.map((h: any, idx: number) => (
+                              <div key={`${h.name}-${idx}`} className="flex flex-wrap items-baseline gap-x-2 text-[10px] font-mono">
+                                <span className="text-amber-400">{h.name}</span>
+                                <span className="text-neutral-500 font-sans font-light">{h.purpose}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Observations read from the literal header values */}
+                      {observations.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Observations From Header Values
+                          </span>
+                          <div className="space-y-2">
+                            {observations.map((o: any, idx: number) => (
+                              <div key={`${o.header}-${idx}`} className="space-y-0.5">
+                                <div className="flex flex-wrap items-baseline gap-x-2">
+                                  <span className="text-[10px] font-mono text-neutral-300 print:text-black">{o.header}</span>
+                                  <span className="text-[11px] text-neutral-400 print:text-black font-sans font-light">{o.observation}</span>
+                                </div>
+                                <code className="text-[10px] font-mono text-neutral-600 break-all block">{o.evidenceValue}</code>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-sans font-light mt-2">
+                            Each observation is read directly from the header text shown beneath it. No value is scored or graded.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={headerEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Lookup diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Lookup Time</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.detectionTimeMs}ms</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Source</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.source}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Final URL</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono truncate block">{diagnostics.finalUrl}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Headers Inspected</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.headersInspected}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>14. Strategic Security & Countermeasure Recommendations</span>
+                <span>15. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (
