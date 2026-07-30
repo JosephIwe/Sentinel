@@ -1,30 +1,20 @@
 # Next Session
 
-_Written 2026-07-30, after merging the HTTP Security Headers connector (PR #15) into `main` at `14ae921`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
+_Written 2026-07-30, after merging the DNSSEC connector (PR #17) into `main` at `ce6fd78`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
 
 ## Where things stand
 
-Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion is well advanced**. Ten connectors are registered in the live pipeline; five shipped on 2026-07-29/30 as PRs #11–#15 (Certificate Transparency, ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers). See `docs/ROADMAP.md` for what each one does and its known limitations.
+Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion is well advanced**. Eleven connectors are registered in the live pipeline; six shipped on 2026-07-29/30 as PRs #11–#15 and #17 (Certificate Transparency, ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers, DNSSEC). See `docs/ROADMAP.md` for what each one does and its known limitations.
 
-Suite is at **423 tests across 28 files, all passing**; `tsc --noEmit` clean; `npm run build` succeeds.
+Suite is at **456 tests across 29 files, all passing**; `tsc --noEmit` clean; `npm run build` succeeds.
 
-## Highest-priority task: merge `feature/dnssec`
+## Highest-priority task: `ShodanConnector`
 
-The DNSSEC connector is **already implemented, tested (33 tests) and live-verified** on branch `feature/dnssec` — it is not new work, it is an unmerged branch. It is the only thing standing between the current state and a complete DNS-layer picture.
+DNSSEC merged 2026-07-30 (PR #17). **All six planned DNS/PKI/HTTP-layer connectors are done**; `ShodanConnector` and `Crawl4AI WebFootprintConnector` are the last two on the v1.1 list.
 
-Before merging it needs one mechanical fix, and nothing else:
+Shodan is the recommended next one — it is the higher-value of the two and the closest structural match to what already exists (single authenticated HTTP call, same status semantics). **Confirm credential handling before starting**: it needs an API key, which none of the existing connectors require, so decide how the key is configured and what the connector does when it is absent (almost certainly `NO_DATA` with an explanatory info string, never a fabricated result).
 
-1. Rebase `feature/dnssec` onto current `main`. Expect conflicts in `.env.example`, `README.md`, `server.ts` and `src/components/InvestigationReport.tsx` — all "both sides appended to the same list", all resolved by keeping both sides.
-2. For `InvestigationReport.tsx`, do **not** hand-splice the interleaved hunks. Take `main`'s file verbatim, then re-insert the DNSSEC section block from the pre-rebase commit with only its number changed. `main` currently ends at section 14 (HTTP Security Headers) with Recommendations at 15, so DNSSEC becomes **15** and Recommendations moves to **16**.
-3. Verify by diffing the re-inserted block against the original — it must show exactly two changed lines (the section number).
-4. Confirm `src/connectors/dnssec.ts` and its test file are byte-identical before and after the rebase.
-5. Run the DNSSEC + server tests, `tsc --noEmit`, `npm run build`, then open and merge the PR.
-
-**Do not change the DNSSEC implementation during the rebase, and keep `DNSSEC_RESOLVER` support exactly as it is** — it was reviewed and deliberately kept. Note that it sends UDP to an operator-specified address and intentionally bypasses the SSRF guard, because operators legitimately run internal validating resolvers on private addresses.
-
-## After DNSSEC: remaining v1.1 connectors
-
-`ShodanConnector` and `Crawl4AI WebFootprintConnector` are the last two on the v1.1 list. Shodan needs an API key, so confirm credential handling before starting it.
+## Connector-authoring reference
 
 **Follow `docs/CONNECTOR_RELEASE_CHECKLIST.md` exactly.** `src/connectors/httpSecurityHeaders.ts` is the freshest reference implementation (single outbound HTTPS call through `safeFetch`, same status semantics, same caching/timeout pattern, diagnostics attached per-evidence).
 

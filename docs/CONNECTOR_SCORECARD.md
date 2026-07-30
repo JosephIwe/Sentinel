@@ -16,6 +16,7 @@ see `CHANGELOG.md` for the history of each addition.
 | RDAP Intelligence | Beta | TBD | TBD | 0 | Medium |
 | Reverse DNS | Beta | TBD | TBD | 0 | Low |
 | HTTP Security Headers | Beta | TBD | TBD | 0 | Low |
+| DNSSEC | Beta | TBD | TBD | 0 | Low |
 
 **HTTP Security Headers — classification and confidence tiers**
 
