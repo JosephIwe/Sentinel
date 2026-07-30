@@ -6,6 +6,28 @@ Entries prior to 2026-07-28 are reconstructed from git history for continuity, s
 
 ---
 
+## 2026-07-30 — Shodan Intelligence connector (PR #19)
+
+**Prompted by**: a spec for a Shodan connector with explicit configuration requirements and an unusually specific instruction — *do not infer software versions, organizations, ownership, or vulnerabilities*.
+
+Reports what Shodan's host API returns: organization, ASN, ISP, hostnames, domains, open ports, detected services, OS and location. Four evidences (`ev_shodan_host`, `_ports`, `_services`, `_os`), 41 tests.
+
+**Three grounding decisions worth keeping:**
+
+1. **`vulns` is not reported at all.** Shodan returns a CVE list, but it is largely produced by matching detected version strings against CVE databases — inference, not observation. Surfacing it as verified evidence would be precisely the failure mode this project deleted three connectors over. A test asserts no CVE identifier reaches the result even when Shodan sends one.
+2. **Versions only where Shodan states them.** A service with a `product` but no `version` is reported without one, even when the banner text visibly contains a version. Reading it out of the banner would be the connector inventing a fact.
+3. **Unconfigured is not "clean".** Without `SHODAN_API_KEY` the connector returns `NO_DATA`, makes no request, and says so in wording that explicitly states it reveals nothing about the target's actual exposure. The report renders this as **NOT CONFIGURED**, never as a failure or an all-clear.
+
+**Pipeline interaction worth knowing**: NO_DATA results here set the `ConnectorResult.error` field so the diagnostic reaches `connectorStatuses` and the report UI. That reads oddly — a NO_DATA carrying an `error` — but the pipeline copies `error` verbatim and `DnsConnector` already does the same on its own NO_DATA skip, so it follows existing precedent rather than requiring a pipeline change. Raised with the user, who chose to keep it. A regression test pins the exact predicate the report keys on, so neither side can drift and silently start presenting an unconfigured connector as a failed investigation.
+
+**Address safety**: only public addresses are submitted. Private, loopback, link-local, multicast and reserved space is filtered through the shared SSRF guard's block list before any request, including within a domain's resolution set. `isBlockedAddress` is deliberately not stubbed in the tests, so rejection is exercised against the real list.
+
+**Environment limitation**: `api.shodan.io` is egress-blocked in the dev sandbox and no API key exists there, so the SUCCESS path is unit-tested only against Shodan's documented host schema. Verified live: the unconfigured path, private/reserved rejection with a key set, and the configured-plus-blocked-network path (correctly ERROR, not NO_DATA).
+
+Suite 456 → **497 tests across 30 files**. Twelve connectors registered. `Crawl4AI WebFootprintConnector` is the only v1.1 item left.
+
+---
+
 ## 2026-07-30 — DNSSEC connector merged (PR #17)
 
 **Prompted by**: an explicit instruction to land the already-implemented `feature/dnssec` branch — rebase onto current `main`, renumber only the report section, preserve the implementation byte-for-byte.

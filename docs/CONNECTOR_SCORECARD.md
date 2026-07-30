@@ -17,6 +17,7 @@ see `CHANGELOG.md` for the history of each addition.
 | Reverse DNS | Beta | TBD | TBD | 0 | Low |
 | HTTP Security Headers | Beta | TBD | TBD | 0 | Low |
 | DNSSEC | Beta | TBD | TBD | 0 | Low |
+| Shodan Intelligence | Beta | TBD | TBD | 0 | Medium |
 
 **HTTP Security Headers — classification and confidence tiers**
 

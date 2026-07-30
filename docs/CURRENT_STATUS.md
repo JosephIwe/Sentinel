@@ -1,6 +1,6 @@
 # Current Status
 
-_Last reviewed: 2026-07-30, after merging the DNSSEC connector (PR #17) into `main` at `ce6fd78`. `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` were reconciled against this file on 2026-07-28 and have not been revisited since; the connector-expansion entries below are newer than those two files._
+_Last reviewed: 2026-07-30, after merging the Shodan Intelligence connector (PR #19) into `main` at `0045c55`. `docs/KNOWN_ISSUES.md` and `docs/MILESTONES.md` were reconciled against this file on 2026-07-28 and have not been revisited since; the connector-expansion entries below are newer than those two files._
 
 ## Release state
 
@@ -10,7 +10,7 @@ _Last reviewed: 2026-07-30, after merging the DNSSEC connector (PR #17) into `ma
 
 ## Verified build health (ran directly, not inferred from docs)
 
-- `npm run test`: **456/456 tests pass** across 29 files (269 → 456 as the v1.1 connectors landed: Certificate Transparency +21, ASN / IP Intelligence +30, RDAP +34, Reverse DNS +31, HTTP Security Headers +38, DNSSEC +33).
+- `npm run test`: **497/497 tests pass** across 30 files (269 → 497 as the v1.1 connectors landed: Certificate Transparency +21, ASN / IP Intelligence +30, RDAP +34, Reverse DNS +31, HTTP Security Headers +38, DNSSEC +33, Shodan +41).
 - `npm run lint` (`tsc --noEmit`): clean, zero errors.
 - `npm run build`: succeeds. Client ~399kB JS (gzip ~102kB) + ~81kB CSS (gzip ~13kB); server bundle ~257kB.
 - `npm audit`: **0 vulnerabilities** (was 1 high-severity postcss advisory, fixed via `npm audit fix` — a patch-level bump, 8.5.17 → 8.5.24, `package-lock.json`-only diff).
@@ -46,7 +46,9 @@ _Last reviewed: 2026-07-30, after merging the DNSSEC connector (PR #17) into `ma
 
 ## Connectors (`docs/CONNECTOR_SCORECARD.md`)
 
-**Eleven connectors are registered in the live pipeline** (`server.ts` DI array): WHOIS, DNS, GitHub Intelligence (Stable); SecurityTxt (Beta, 2026-07-22); Technology Fingerprint (Beta, 2026-07-28); Certificate Transparency (Beta, 2026-07-29); ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers, DNSSEC (Beta, all 2026-07-30).
+**Twelve connectors are registered in the live pipeline** (`server.ts` DI array): WHOIS, DNS, GitHub Intelligence (Stable); SecurityTxt (Beta, 2026-07-22); Technology Fingerprint (Beta, 2026-07-28); Certificate Transparency (Beta, 2026-07-29); ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers, DNSSEC, Shodan Intelligence (Beta, all 2026-07-30).
+
+Shodan is the only connector requiring a credential (`SHODAN_API_KEY`). Unconfigured it is inert: `NO_DATA` with a "not configured" diagnostic, no request made, and the report renders it as NOT CONFIGURED rather than a failure.
 
 Three legacy fabricated-data connectors (Google, News, old GitHub) still exist as dead code in `src/connectors/`, explicitly excluded from the live pipeline, not deleted.
 
