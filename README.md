@@ -163,6 +163,8 @@ The app serves the Vite-powered frontend and the Express API together at `http:/
 | `SECURITYTXT_CACHE_TTL_MS` | No | `1800000` | security.txt (RFC 9116) lookup cache TTL (30 minutes). |
 | `TECHFINGERPRINT_CACHE_TTL_MS` | No | `1800000` | Technology fingerprint cache TTL (30 minutes). |
 | `TECHFINGERPRINT_TIMEOUT_MS` | No | `4000` | Technology fingerprint per-request timeout (4 seconds). |
+| `CT_CACHE_TTL_MS` | No | `3600000` | Certificate Transparency lookup cache TTL (1 hour). |
+| `CT_TIMEOUT_MS` | No | `4000` | Certificate Transparency per-request timeout (4 seconds). |
 
 See [`.env.example`](.env.example) and [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, annotated list.
 
