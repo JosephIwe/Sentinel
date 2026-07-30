@@ -2576,12 +2576,185 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* Reverse DNS Section */}
+          {(() => {
+            const rdnsStatus = response.connectorStatuses?.find(
+              (s: any) => s.name === "Reverse DNS Resolver"
+            );
+            if (!rdnsStatus) return null;
+
+            const rdnsEvidences = (response.evidences || []).filter(ev => ev.id?.startsWith("ev_rdns_"));
+            const ptrEv = rdnsEvidences.find(ev => ev.id === "ev_rdns_ptr_records");
+            const hostnamesEv = rdnsEvidences.find(ev => ev.id === "ev_rdns_hostnames");
+            const confirmedEv = rdnsEvidences.find(ev => ev.id === "ev_rdns_forward_confirmed");
+            const coverageEv = rdnsEvidences.find(ev => ev.id === "ev_rdns_coverage");
+            const found = rdnsStatus.status === "SUCCESS" && !!ptrEv;
+            const diagnostics = ptrEv?.rawData?.diagnostics;
+
+            const records: any[] = ptrEv?.rawData?.records || [];
+            const confirmed: string[] = confirmedEv?.rawData?.forwardConfirmedHostnames || [];
+            const withoutPtr: string[] = coverageEv?.rawData?.withoutPtr || [];
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="reverse-dns-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <Globe className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>13. Reverse DNS</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        found
+                          ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                          : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {found ? `${ptrEv?.rawData?.ptrRecordCount ?? 0} PTR RECORDS` : rdnsStatus.status}
+                    </span>
+                  </div>
+
+                  {!found ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {rdnsStatus.status === "ERROR"
+                        ? `Reverse DNS could not be resolved: ${(rdnsStatus.error || "the resolver was unreachable.").replace(/\.*$/, ".")}`
+                        : "No PTR record is published for the addresses this target resolves to."}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Summary tiles */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">PTR Records</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{ptrEv?.rawData?.ptrRecordCount ?? 0}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Addresses With PTR</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {diagnostics?.ipsWithPtr ?? records.length} / {diagnostics?.ipsQueried ?? records.length}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Forward-Confirmed</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{confirmed.length}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">No PTR Published</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{withoutPtr.length}</span>
+                        </div>
+                      </div>
+
+                      {/* PTR record table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[560px]">
+                          <thead>
+                            <tr className="border-b border-neutral-800/80 print:border-neutral-200">
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">IP Address</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Family</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">PTR Hostname(s)</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Confirmed</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2">Resolved At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {records.map((r: any, idx: number) => (
+                              <tr key={`${r.ip}-${idx}`} className="border-b border-neutral-900/80 print:border-neutral-100 last:border-0">
+                                <td className="text-xs text-neutral-200 print:text-black font-mono py-2 pr-3">{r.ip}</td>
+                                <td className="text-xs text-neutral-400 print:text-black font-mono py-2 pr-3">{r.family}</td>
+                                <td className="text-xs text-neutral-300 print:text-black font-mono py-2 pr-3">
+                                  {(r.hostnames || []).join(", ") || "—"}
+                                </td>
+                                <td className="text-xs font-mono py-2 pr-3">
+                                  {(r.forwardConfirmed || []).length > 0 ? (
+                                    <span className="text-emerald-400">
+                                      {(r.forwardConfirmed || []).length}/{(r.hostnames || []).length}
+                                    </span>
+                                  ) : (
+                                    <span className="text-neutral-500">0/{(r.hostnames || []).length}</span>
+                                  )}
+                                </td>
+                                <td className="text-xs text-neutral-500 print:text-black font-mono py-2">
+                                  {(r.resolvedAt || "").toString().replace("T", " ").replace(/\..*$/, "")}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Hostnames discovered */}
+                      {(hostnamesEv?.rawData?.hostnames || []).length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Hostnames Discovered
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(hostnamesEv?.rawData?.hostnames || []).map((hostname: string, idx: number) => (
+                              <span
+                                key={`${hostname}-${idx}`}
+                                className={`text-[10px] font-mono rounded px-2 py-1 border ${
+                                  confirmed.includes(hostname)
+                                    ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
+                                    : "text-neutral-300 print:text-black bg-neutral-900/70 border-neutral-800"
+                                }`}
+                              >
+                                {hostname}
+                                {confirmed.includes(hostname) ? " ✓" : ""}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-sans font-light mt-2">
+                            A ✓ marks a forward-confirmed record: the hostname resolves back to the originating address.
+                            A PTR record alone is controlled by the holder of the reverse zone.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={rdnsEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Lookup diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Lookup Time</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.detectionTimeMs}ms</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Source</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.source}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Addresses Resolved</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.ipsResolved}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Lookups Failed</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.ipsLookupFailed}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>13. Strategic Security & Countermeasure Recommendations</span>
+                <span>14. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (
