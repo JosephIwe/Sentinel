@@ -2380,12 +2380,208 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* RDAP Intelligence Section */}
+          {(() => {
+            const rdapStatus = response.connectorStatuses?.find(
+              (s: any) => s.name === "RDAP Intelligence"
+            );
+            if (!rdapStatus) return null;
+
+            const rdapEvidences = (response.evidences || []).filter(ev => ev.id?.startsWith("ev_rdap_"));
+            const registrationEv = rdapEvidences.find(ev => ev.id === "ev_rdap_registration");
+            const eventsEv = rdapEvidences.find(ev => ev.id === "ev_rdap_events");
+            const contactsEv = rdapEvidences.find(ev => ev.id === "ev_rdap_contacts");
+            const nameserversEv = rdapEvidences.find(ev => ev.id === "ev_rdap_nameservers");
+            const dnssecEv = rdapEvidences.find(ev => ev.id === "ev_rdap_dnssec");
+            const found = rdapStatus.status === "SUCCESS" && rdapEvidences.length > 0;
+            const diagnostics =
+              registrationEv?.rawData?.diagnostics ||
+              eventsEv?.rawData?.diagnostics ||
+              nameserversEv?.rawData?.diagnostics;
+
+            const statuses: string[] = registrationEv?.rawData?.statuses || [];
+            const nameservers: any[] = nameserversEv?.rawData?.nameservers || [];
+            const contacts: Array<{ role: string; list: any[] }> = [
+              { role: "Abuse", list: contactsEv?.rawData?.abuse || [] },
+              { role: "Technical", list: contactsEv?.rawData?.technical || [] },
+              { role: "Administrative", list: contactsEv?.rawData?.administrative || [] }
+            ].filter(group => group.list.length > 0);
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="rdap-intelligence-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <FileText className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>12. RDAP Intelligence</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        found
+                          ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                          : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {found ? "REGISTRY RECORD FOUND" : rdapStatus.status}
+                    </span>
+                  </div>
+
+                  {!found ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {rdapStatus.status === "ERROR"
+                        ? `The RDAP registry record could not be retrieved: ${(rdapStatus.error || "the RDAP service was unreachable.").replace(/\.*$/, ".")}`
+                        : "No RDAP registration record is published for this target."}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Registration summary */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Registrar</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono truncate block">
+                            {registrationEv?.rawData?.registrar || "—"}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Created</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {(eventsEv?.rawData?.createdOn || "—").toString().split("T")[0]}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Expires</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {(eventsEv?.rawData?.expiresOn || "—").toString().split("T")[0]}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">DNSSEC</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {dnssecEv
+                              ? dnssecEv.rawData?.delegationSigned
+                                ? "Signed"
+                                : "Unsigned"
+                              : "Not published"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Registration status codes */}
+                      {statuses.length > 0 && (
+                        <div>
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Registration Status
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {statuses.map((status: string, idx: number) => (
+                              <span
+                                key={`${status}-${idx}`}
+                                className="text-[10px] font-mono text-neutral-300 print:text-black bg-neutral-900/70 border border-neutral-800 rounded px-2 py-1"
+                              >
+                                {status}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Published contacts */}
+                      {contacts.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Published Contacts
+                          </span>
+                          <div className="space-y-1.5">
+                            {contacts.map(group =>
+                              group.list.map((contact: any, idx: number) => (
+                                <div
+                                  key={`${group.role}-${idx}`}
+                                  className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono"
+                                >
+                                  <span className="text-neutral-500 uppercase font-bold w-24 shrink-0">{group.role}</span>
+                                  <span className="text-neutral-200 print:text-black">
+                                    {contact.organization || contact.name || contact.handle || "—"}
+                                  </span>
+                                  {contact.email && <span className="text-neutral-400">{contact.email}</span>}
+                                  {contact.phone && <span className="text-neutral-500">{contact.phone}</span>}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-sans font-light mt-2">
+                            Registries redact contact data extensively. An absent role means nothing was published, not that no such contact exists.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Delegated nameservers */}
+                      {nameservers.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Delegated Nameservers (Registry Record)
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {nameservers.map((ns: any, idx: number) => (
+                              <span
+                                key={`${ns.host}-${idx}`}
+                                className="text-[10px] font-mono text-neutral-300 print:text-black bg-neutral-900/70 border border-neutral-800 rounded px-2 py-1"
+                              >
+                                {ns.host}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={rdapEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Lookup diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Lookup Time</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.detectionTimeMs}ms</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">RDAP Source</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono truncate block">{diagnostics.rdapBaseUrl}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Events Published</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.eventCount}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Contacts Published</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">
+                              {(diagnostics.abuseContactsPublished ?? 0) +
+                                (diagnostics.technicalContactsPublished ?? 0) +
+                                (diagnostics.administrativeContactsPublished ?? 0)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>12. Strategic Security & Countermeasure Recommendations</span>
+                <span>13. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (
