@@ -3139,12 +3139,221 @@ export default function InvestigationReport({ response, targetType, targetQuery 
             );
           })()}
 
+          {/* Shodan Intelligence Section */}
+          {(() => {
+            const shodanStatus = response.connectorStatuses?.find(
+              (s: any) => s.name === "Shodan Intelligence"
+            );
+            if (!shodanStatus) return null;
+
+            const shodanEvidences = (response.evidences || []).filter(ev => ev.id?.startsWith("ev_shodan_"));
+            const hostEv = shodanEvidences.find(ev => ev.id === "ev_shodan_host");
+            const portsEv = shodanEvidences.find(ev => ev.id === "ev_shodan_ports");
+            const servicesEv = shodanEvidences.find(ev => ev.id === "ev_shodan_services");
+            const osEv = shodanEvidences.find(ev => ev.id === "ev_shodan_os");
+            const found = shodanStatus.status === "SUCCESS" && !!hostEv;
+            const diagnostics = hostEv?.rawData?.diagnostics;
+
+            const hosts: any[] = hostEv?.rawData?.hosts || [];
+            const openPorts: number[] = portsEv?.rawData?.openPorts || [];
+            const serviceGroups: any[] = servicesEv?.rawData?.services || [];
+            const notConfigured = shodanStatus.status === "NO_DATA" && /not configured/i.test(shodanStatus.error || "");
+
+            return (
+              <div className="lg:col-span-12 space-y-4 print:break-inside-avoid" id="shodan-intelligence-section">
+                <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800/80 print:border-neutral-200 pb-2.5 gap-2">
+                    <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2">
+                      <Network className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
+                      <span>16. Shodan Internet Exposure</span>
+                    </h3>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        found
+                          ? "text-amber-400 bg-amber-500/10 border border-amber-500/20"
+                          : "text-neutral-400 bg-neutral-800/40 border border-neutral-700/50"
+                      }`}
+                    >
+                      {found ? `${openPorts.length} OPEN PORTS` : notConfigured ? "NOT CONFIGURED" : shodanStatus.status}
+                    </span>
+                  </div>
+
+                  {!found ? (
+                    <p className="text-xs text-neutral-400 font-sans font-light">
+                      {shodanStatus.status === "ERROR"
+                        ? `Shodan exposure data could not be retrieved: ${(shodanStatus.error || "the API was unreachable.").replace(/\.*$/, ".")}`
+                        : notConfigured
+                        ? "Shodan is not configured (SHODAN_API_KEY is unset), so no exposure data was requested. This says nothing about the target's actual internet exposure."
+                        : "Shodan holds no scan record for the addresses this target resolves to."}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Summary tiles */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Addresses Scanned</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{hosts.length}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Open Ports</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">{openPorts.length}</span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Services</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono">
+                            {diagnostics?.serviceCount ?? 0}
+                            {diagnostics ? ` (${diagnostics.productsIdentified} named)` : ""}
+                          </span>
+                        </div>
+                        <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Organization</span>
+                          <span className="text-xs text-neutral-200 print:text-black font-mono truncate block">
+                            {hosts[0]?.organization || "—"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Scanned hosts */}
+                      <div className="overflow-x-auto">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Scanned Addresses
+                        </span>
+                        <table className="w-full text-left border-collapse min-w-[600px]">
+                          <thead>
+                            <tr className="border-b border-neutral-800/80 print:border-neutral-200">
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Address</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Organization / ISP</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">ASN</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2 pr-3">Country</th>
+                              <th className="text-[9px] font-mono text-neutral-500 uppercase font-bold py-2">Open Ports</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hosts.map((h: any, idx: number) => (
+                              <tr key={`${h.ip}-${idx}`} className="border-b border-neutral-900/80 print:border-neutral-100 last:border-0">
+                                <td className="text-xs text-neutral-200 print:text-black font-mono py-2 pr-3 align-top">{h.ip}</td>
+                                <td className="text-xs text-neutral-300 print:text-black font-mono py-2 pr-3 align-top">
+                                  {h.organization || "—"}
+                                  {h.isp && h.isp !== h.organization ? ` / ${h.isp}` : ""}
+                                </td>
+                                <td className="text-xs text-neutral-400 print:text-black font-mono py-2 pr-3 align-top">{h.asn || "—"}</td>
+                                <td className="text-xs text-neutral-400 print:text-black font-mono py-2 pr-3 align-top">{h.country || "—"}</td>
+                                <td className="text-xs text-neutral-400 print:text-black font-mono py-2 align-top break-all">
+                                  {(h.ports || []).join(", ") || "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Detected services */}
+                      {serviceGroups.length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Detected Services
+                          </span>
+                          <div className="space-y-2">
+                            {serviceGroups.map((group: any, gi: number) =>
+                              (group.services || []).map((s: any, si: number) => (
+                                <div key={`${group.ip}-${gi}-${si}`} className="space-y-0.5">
+                                  <div className="flex flex-wrap items-baseline gap-x-2 text-[10px] font-mono">
+                                    <span className="text-neutral-500">{group.ip}</span>
+                                    <span className="text-neutral-200 print:text-black">
+                                      {s.port ?? "?"}/{s.transport || "tcp"}
+                                    </span>
+                                    {s.product ? (
+                                      <span className="text-emerald-400">
+                                        {s.product}
+                                        {s.version ? ` ${s.version}` : ""}
+                                      </span>
+                                    ) : (
+                                      <span className="text-neutral-500">{s.module || "unidentified"}</span>
+                                    )}
+                                    {s.os && <span className="text-neutral-500">{s.os}</span>}
+                                  </div>
+                                  {s.bannerExcerpt && (
+                                    <code className="text-[10px] font-mono text-neutral-600 break-all block">
+                                      {s.bannerExcerpt}
+                                    </code>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-sans font-light mt-2">
+                            Products and versions appear only where Shodan states them explicitly. Vulnerabilities are not reported —
+                            Shodan derives those by matching versions against CVE lists, which is inference rather than observation.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Operating systems, where Shodan states one */}
+                      {osEv && (osEv.rawData?.operatingSystems || []).length > 0 && (
+                        <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                            Operating System
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(osEv.rawData.operatingSystems || []).map((o: any, idx: number) => (
+                              <span
+                                key={`${o.ip}-${idx}`}
+                                className="text-[10px] font-mono text-neutral-300 print:text-black bg-neutral-900/70 border border-neutral-800 rounded px-2 py-1"
+                              >
+                                {o.ip} · {o.os}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Supporting evidence, expandable via the shared viewer */}
+                      <div className="border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-2">
+                          Supporting Evidence
+                        </span>
+                        <EvidenceViewer
+                          evidenceIds={shodanEvidences.map(ev => ev.id)}
+                          evidencesList={response.evidences || []}
+                        />
+                      </div>
+
+                      {/* Lookup diagnostics */}
+                      {diagnostics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-neutral-800/60 print:border-neutral-200 pt-3">
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Lookup Time</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.detectionTimeMs}ms</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Source</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.source}</span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Addresses Queried</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">
+                              {diagnostics.ipsWithData} / {diagnostics.ipsQueried}
+                            </span>
+                          </div>
+                          <div className="bg-neutral-900/60 border border-neutral-800/80 p-2.5 rounded-lg">
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase block font-bold mb-0.5">Non-Public Skipped</span>
+                            <span className="text-xs text-neutral-200 print:text-black font-mono">{diagnostics.ipsSkippedNonPublic}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendations */}
           <div className="lg:col-span-12 space-y-4 print:break-inside-avoid">
             <div className="bg-neutral-950/45 border border-neutral-850 p-5 sm:p-6 rounded-xl space-y-4 print:bg-neutral-50 print:border-neutral-200">
               <h3 className="text-xs font-bold text-neutral-200 print:text-black uppercase tracking-wider font-mono flex items-center space-x-2 border-b border-neutral-800/80 print:border-neutral-200 pb-2.5">
                 <CheckSquare className="w-4 h-4 text-neutral-400 print:text-neutral-600" />
-                <span>16. Strategic Security & Countermeasure Recommendations</span>
+                <span>17. Strategic Security & Countermeasure Recommendations</span>
               </h3>
 
               {response.recommendations && response.recommendations.length > 0 ? (

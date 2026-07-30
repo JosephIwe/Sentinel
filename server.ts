@@ -15,6 +15,7 @@ import { RdapIntelligenceConnector } from "./src/connectors/rdapIntelligence";
 import { ReverseDnsConnector } from "./src/connectors/reverseDns";
 import { HttpSecurityHeadersConnector } from "./src/connectors/httpSecurityHeaders";
 import { DnssecConnector } from "./src/connectors/dnssec";
+import { ShodanConnector } from "./src/connectors/shodan";
 import { InvestigationService } from "./src/services/investigation";
 import { IntelligenceService } from "./src/services/intelligence";
 import { InvestigationWorker } from "./src/services/investigationWorker";
@@ -663,6 +664,7 @@ const rdapIntelligenceConnector = new RdapIntelligenceConnector();
 const reverseDnsConnector = new ReverseDnsConnector();
 const httpSecurityHeadersConnector = new HttpSecurityHeadersConnector();
 const dnssecConnector = new DnssecConnector();
+const shodanConnector = new ShodanConnector();
 
 const investigationService = new InvestigationService([
   whoisConnector,
@@ -676,6 +678,7 @@ const investigationService = new InvestigationService([
   reverseDnsConnector,
   httpSecurityHeadersConnector,
   dnssecConnector,
+  shodanConnector,
 ]);
 
 // Seed in-memory list tracking successful multi-source intelligence reports.
