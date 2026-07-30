@@ -1,25 +1,31 @@
 # Next Session
 
-_Written 2026-07-30, after merging the Shodan Intelligence connector (PR #19) into `main` at `0045c55`. Read this first, then `docs/CURRENT_STATUS.md` for detail._
+_Written 2026-07-30, after implementing the Crawl4AI Web Footprint connector on branch `feature/crawl4ai-web-footprint` (unmerged; `main` at `71af270`). Read this first, then `docs/CURRENT_STATUS.md` for detail._
 
 ## Where things stand
 
 Release engineering is complete (Milestones 0–2 plus a follow-up correction), and **v1.1 connector expansion is well advanced**. Twelve connectors are registered in the live pipeline; seven shipped on 2026-07-29/30 as PRs #11–#15, #17 and #19 (Certificate Transparency, ASN / IP Intelligence, RDAP Intelligence, Reverse DNS, HTTP Security Headers, DNSSEC, Shodan Intelligence). See `docs/ROADMAP.md` for what each one does and its known limitations.
 
-Suite is at **497 tests across 30 files, all passing**; `tsc --noEmit` clean; `npm run build` succeeds.
+Suite is at **547 tests across 31 files, all passing** (on the Web Footprint branch; 497/30 on `main`); `tsc --noEmit` clean; `npm run build` succeeds.
 
-## Highest-priority task: `Crawl4AI WebFootprintConnector`
+## Highest-priority task: review and merge `feature/crawl4ai-web-footprint`
 
-Shodan merged 2026-07-30 (PR #19). It is **the last remaining item on the v1.1 connector list** — after it, v1.1 connector expansion is complete and attention returns to Milestone 3 (test coverage and quality hardening).
+The Web Footprint connector is written, tested (50 tests) and verified as far as this environment allows. It is **the last v1.1 connector** — merging it completes v1.1 connector expansion, after which attention returns to Milestone 3 (test coverage and quality hardening).
 
-Decisions to settle before writing code, because they shape the whole connector:
+It is unmerged deliberately, pending review of two things a reviewer should look at directly:
 
-- **What it actually collects.** "Web footprint" is broad. Scope it to what can be observed and pointed at in a fetched page — discovered links, referenced third-party origins, forms and their action targets, social/contact handles present in markup, and so on. Anything requiring judgement about *significance* is out.
-- **Crawl depth.** A crawler is the first connector that can issue many requests per target. Decide the page cap and depth up front, enforce it hard, and record both in diagnostics. Single-page (homepage only) is a defensible v1.
-- **Whether Crawl4AI is a dependency or an HTTP service.** If it is a service, it needs configuration and the same not-configured handling as Shodan. If it is a library, check its transitive dependency weight before adding it.
-- **robots.txt.** Decide and document the policy explicitly rather than leaving it implicit.
+1. **The assumed Crawl4AI response contract.** No Crawl4AI service is reachable in this environment, so the request/response shape is written to Crawl4AI's documented REST API and read defensively — every field optional, unrecognisable payloads treated as ERROR. The first run against a real service is the real test. If the shape differs, `Crawl4AiResult` and the `crawler_config` body in `crawl4aiWebFootprint.ts` are the only places to change.
+2. **The service-endpoint trust decision.** `CRAWL4AI_URL` is reached with a plain `fetch`, not `safeFetch`, because a Crawl4AI sidecar normally lives on a private address that `safeFetch` would reject. The *target* is what goes through the guard — `assertPublicHostname` before handing it over, and again on the final URL the service reports, so a redirect into private space is discarded. This is the correct boundary, but it is a deliberate exception worth a reviewer's eyes.
 
-Every fetch must go through `src/utils/ssrfGuard.ts`'s `safeFetch`, which already re-validates each redirect hop.
+Section 17 in the report; Recommendations moved to 18.
+
+## After Web Footprint: v1.1 is complete
+
+With it merged, all connectors on the v1.1 list are done. The natural next tracks, in order of launch value:
+
+1. **Milestone 3 — test coverage and quality hardening.** Listed below.
+2. **Delete the three dead legacy connectors** (`google.ts`, `news.ts`, `github.ts`), flagged across seven sessions now. Connector work being the active track makes this the moment.
+3. **Cut the `v1.0.0` tag** once Milestone 3 lands.
 
 ## Connector-authoring reference
 

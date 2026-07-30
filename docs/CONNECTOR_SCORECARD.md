@@ -18,6 +18,27 @@ see `CHANGELOG.md` for the history of each addition.
 | HTTP Security Headers | Beta | TBD | TBD | 0 | Low |
 | DNSSEC | Beta | TBD | TBD | 0 | Low |
 | Shodan Intelligence | Beta | TBD | TBD | 0 | Medium |
+| Web Footprint (Crawl4AI) | Beta (unmerged) | TBD | TBD | 0 | Medium |
+
+**Web Footprint — scope limits and safety posture**
+
+Implemented 2026-07-30 on `feature/crawl4ai-web-footprint`. Crawl4AI is integrated as an **HTTP service**, never a library, and never
+falls back to a second crawler when unconfigured.
+
+| Limit | Value | Enforced |
+|---|---|---|
+| Crawl depth | 0 | `deep_crawl_strategy` is forbidden for untrusted bodies upstream, so deep crawling cannot be enabled at all |
+| Pages crawled | 1 | Exactly one URL submitted; only `results[0]` is read |
+| Links followed | 0 | Counted only; asserted by test |
+| External fetches | 0 | `exclude_external_links` (on Crawl4AI's untrusted allowlist, so it takes effect), asserted by test |
+| Subdomain expansion | none | Not implemented |
+| Vulnerability claims | none | Asserted by test |
+
+Because the service performs the fetch, the target is proven public with `assertPublicHostname` *before* being handed over, and the
+final URL is re-checked afterwards so a redirect into private space is discarded rather than reported. `CRAWL4AI_URL` is operator
+infrastructure config (typically a private sidecar) and is reached with a plain fetch after http/https validation — it is never
+derived from investigation input. Basic-auth credentials in that URL are moved into an `Authorization` header (fetch() rejects
+credentialled URLs) and redacted out of everything surfaced, including upstream error text that quotes the URL back.
 
 **HTTP Security Headers — classification and confidence tiers**
 

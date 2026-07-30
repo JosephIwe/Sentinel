@@ -6,6 +6,31 @@ Entries prior to 2026-07-28 are reconstructed from git history for continuity, s
 
 ---
 
+## 2026-07-30 — Crawl4AI Web Footprint connector (branch `feature/crawl4ai-web-footprint`, unmerged)
+
+**Prompted by**: a spec for the final v1.1 connector, with an explicit and unusually firm scope ceiling — depth 0, one page, no site-wide crawling, no link following, no subdomain expansion, no recursion, no vulnerability claims.
+
+Reads a single page through a configured Crawl4AI service and reports page metadata, resource and link counts, form structure, and technology indicators present verbatim in the markup. Five evidences (`ev_footprint_metadata`, `_resources`, `_forms`, `_technology`, `_links`), 50 tests, report section 17.
+
+**Integration decision: HTTP service, not a library.** Every connector in this project is a thin network client with no heavy local dependency, and Crawl4AI is a Python/browser stack. Running it as a service (`CRAWL4AI_URL`) preserves that property. Unconfigured, the connector is inert — NO_DATA with a "not configured" diagnostic, no request, and explicitly **no fallback to a second crawling implementation**.
+
+**The security boundary is the interesting part.** Crawl4AI performs the fetch, so the usual `safeFetch` wrapper does not apply to the page load. Instead:
+- The target is proven public with `assertPublicHostname` **before** being handed to the service.
+- The URL the service reports coming back is re-checked **after**, so a redirect into private space is discarded rather than described. A test asserts the private-host page content never reaches the result.
+- `CRAWL4AI_URL` is reached with a plain `fetch` rather than `safeFetch`, because a sidecar deployment normally lives on exactly the private address `safeFetch` rejects. It is operator infrastructure config, validated as http/https, and never derived from investigation input. This is a deliberate exception and is flagged for review.
+
+**robots.txt** is honoured, with the three cases kept distinct: an explicit `Disallow` is NO_DATA; an absent robots.txt (404/410) is unrestricted, which is RFC 9309's own meaning rather than an assumption; and a robots.txt that cannot be retrieved leaves permission unestablished, so the page is not crawled and the result is ERROR. "Do not invent permission" is enforced, not merely intended.
+
+**Scope enforced in both directions**: depth 0 and one page are sent to the service *and* enforced locally by reading only the first result, so a service that ignores the caps still cannot widen the footprint. Tests assert exactly one service call, zero links followed, and that no external host from the page (twitter.com, youtube.com in the fixture) is ever fetched.
+
+**Deliberately not collected**: no cookies, tokens, passwords, or field values. A test feeds a page containing `hunter2`, `session=abc123` and a bearer token and asserts none of it appears anywhere in the serialized result.
+
+**Environment limitation, stated plainly**: no Crawl4AI service is reachable here, so SUCCESS and NO_DATA use deterministic mocked service responses — that is not live verification and is not claimed as such. The unconfigured path, the unreachable-service ERROR path, and SSRF refusal against a real hostname resolving to 127.0.0.1 were each verified live.
+
+Suite 497 → **547 tests across 31 files** on the branch. Left unmerged for review.
+
+---
+
 ## 2026-07-30 — Shodan Intelligence connector (PR #19)
 
 **Prompted by**: a spec for a Shodan connector with explicit configuration requirements and an unusually specific instruction — *do not infer software versions, organizations, ownership, or vulnerabilities*.
