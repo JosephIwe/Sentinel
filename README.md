@@ -167,6 +167,9 @@ The app serves the Vite-powered frontend and the Express API together at `http:/
 | `CT_TIMEOUT_MS` | No | `4000` | Certificate Transparency per-request timeout (4 seconds). |
 | `ASN_CACHE_TTL_MS` | No | `3600000` | ASN / IP intelligence lookup cache TTL (1 hour). |
 | `ASN_TIMEOUT_MS` | No | `4000` | ASN / IP intelligence per-lookup timeout (4 seconds). |
+| `RDAP_CACHE_TTL_MS` | No | `3600000` | RDAP lookup and IANA bootstrap cache TTL (1 hour). |
+| `RDAP_TIMEOUT_MS` | No | `4000` | RDAP per-request timeout (4 seconds). |
+| `RDAP_BOOTSTRAP_URL` | No | `https://data.iana.org/rdap/dns.json` | IANA RDAP bootstrap registry (RFC 7484); override only to use a mirror. |
 
 See [`.env.example`](.env.example) and [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete, annotated list.
 
