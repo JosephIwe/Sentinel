@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import crypto from "crypto";
@@ -1054,6 +1053,13 @@ async function startServer() {
   validateEnvironment();
 
   if (process.env.NODE_ENV !== "production") {
+    // Loaded lazily and only here. Vite is a dev-only dependency of this
+    // server: it is used solely to mount the dev middleware below, and never
+    // in production or on Vercel. Importing it at module scope pulled Vite,
+    // Rollup and esbuild (~16MB) into the serverless function's import graph
+    // for code that can never execute there - work that /health should not
+    // have to do to answer a liveness probe.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
