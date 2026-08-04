@@ -1,13 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "vite build",
-  "outputDirectory": "dist",
-  "framework": "vite",
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/health", "destination": "/api" },
-    { "source": "/ready", "destination": "/api" },
-    { "source": "/version", "destination": "/api" },
-    { "source": "/docs", "destination": "/api" }
-  ]
+  "buildCommand": "node scripts/build-vercel.mjs",
+  "framework": null
 }
